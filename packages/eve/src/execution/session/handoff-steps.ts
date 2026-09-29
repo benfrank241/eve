@@ -1,4 +1,4 @@
-import { getBlockingWorkflowToolRuns } from "#harness/workflow-tool-runs.js";
+import { readSessionMachine } from "#harness/session-machine.js";
 import { deserializeContext } from "#context/serialize.js";
 import { readDurableSession, type DurableSessionState } from "#execution/durable-session-store.js";
 import {
@@ -15,28 +15,23 @@ import { isObject } from "#shared/guards.js";
 /** Parses retained work with this deployment's code before deciding whether it can move. */
 export function isSessionStateIdleForHandoff(sessionState: DurableSessionState): boolean {
   const { state } = readDurableSession(sessionState);
-  // Decoding the run registry rejects corrupt state before any busy-work shortcut.
-  const workflowToolRuns = getBlockingWorkflowToolRuns(state);
+  // Decoding the session machine rejects corrupt state before any busy-work shortcut.
+  const machine = readSessionMachine(state);
+  if (machine.steps.length > 0 || machine.prompt !== undefined || machine.queued !== undefined) {
+    return false;
+  }
 
   // These registries are deleted when work settles. Their ordinary readers
   // tolerate malformed values as absent; that must not authorize a handoff.
-  const pendingKeys = [
-    "eve.runtime.pendingAuthorization",
-    "eve.runtime.pendingInputBatch",
-    "eve.runtime.pendingCoordinationBatch",
-    "eve.runtime.deferredStepInput",
-    "eve.harness.pendingWorkflowInterrupt",
-  ];
+  const pendingKeys = ["eve.runtime.pendingAuthorization", "eve.harness.pendingWorkflowInterrupt"];
   if (pendingKeys.some((key) => state?.[key] !== undefined)) return false;
-  const batches = state?.["eve.runtime.pendingInputBatches"];
-  if (batches !== undefined && (!Array.isArray(batches) || batches.length > 0)) return false;
   const proxyRequests = state?.["eve.runtime.proxyInputRequests"];
   if (
     proxyRequests !== undefined &&
     (!isObject(proxyRequests) || Object.keys(proxyRequests).length > 0)
   )
     return false;
-  return workflowToolRuns.length === 0;
+  return true;
 }
 
 /** Reads durable work using the source deployment's handoff contract. */

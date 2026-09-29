@@ -1,15 +1,15 @@
-import type { HarnessEmissionState } from "#harness/emission.js";
+import type { SessionMachine } from "#harness/session-machine.js";
 import type { ExecutionInstrumentation } from "#instrumentation/runtime.js";
 import type { RuntimeTraceContext } from "#protocol/message.js";
 
 /** Prepares native tracing for workflow-owned preambles emitted outside the tool loop. */
 export async function prepareWorkflowPreambleTrace(input: {
-  readonly emissionState: HarnessEmissionState;
+  readonly machine: SessionMachine;
   readonly instrumentation: ExecutionInstrumentation | undefined;
 }): Promise<RuntimeTraceContext | undefined> {
   return await input.instrumentation?.preparePreamble({
-    sequence: input.emissionState.sequence,
-    sessionStarted: input.emissionState.sessionStarted,
-    turnId: `turn_${input.emissionState.sequence}`,
+    sequence: input.machine.sequence,
+    sessionStarted: input.machine.started,
+    turnId: `turn_${input.machine.sequence}`,
   });
 }

@@ -12,13 +12,12 @@
  *    the prompt).
  */
 import { createInputRequestedEvent } from "#protocol/message.js";
+import { emitTurnCompleted, emitTurnFailed } from "#harness/session-lifecycle.js";
 import {
-  emitFailedStep,
-  emitTurnEpilogue,
-  setHarnessEmissionState,
-  type HarnessEmissionState,
-} from "#harness/emission.js";
-import { appendPendingInputBatch } from "#harness/input-requests.js";
+  eventCoordinates,
+  writeSessionMachine,
+  type SessionMachine,
+} from "#harness/session-machine.js";
 import type { HarnessModelMessage } from "#harness/messages.js";
 import { createSessionLimitContinuationRequest } from "#harness/session-limit-continuation.js";
 import { SessionLimitDeclinedError } from "#harness/turn-cancellation.js";
@@ -36,7 +35,7 @@ const SESSION_TOKEN_COST_LIMIT_REACHED_CODE = "SESSION_TOKEN_COST_LIMIT_REACHED"
 interface SessionLimitPolicyInput {
   readonly config: ToolLoopHarnessConfig;
   readonly emit?: ToolLoopHarnessConfig["handleEvent"];
-  readonly emissionState: HarnessEmissionState;
+  readonly machine: SessionMachine;
   readonly session: HarnessSession;
 }
 
@@ -112,7 +111,7 @@ export async function enforceSessionUsageLimit(
 async function parkOnSessionUsageLimit(input: {
   readonly config: ToolLoopHarnessConfig;
   readonly emit: NonNullable<ToolLoopHarnessConfig["handleEvent"]>;
-  readonly emissionState: HarnessEmissionState;
+  readonly machine: SessionMachine;
   readonly messages: readonly HarnessModelMessage[];
   readonly session: HarnessSession;
   readonly violation: SessionUsageLimitViolation;
@@ -121,33 +120,17 @@ async function parkOnSessionUsageLimit(input: {
     sessionId: input.session.sessionId,
     violation: input.violation,
   });
-  let emissionState = input.emissionState;
-
-  const parkedSession = appendPendingInputBatch({
-    event: {
-      sequence: emissionState.sequence,
-      stepIndex: emissionState.stepIndex,
-      turnId: emissionState.turnId,
-    },
-    requests: [request],
-    responseMessages: [],
-    session: { ...input.session, history: [...input.messages] },
-  });
-
-  await input.emit(
-    createInputRequestedEvent({
-      requests: [request],
-      sequence: emissionState.sequence,
-      stepIndex: emissionState.stepIndex,
-      turnId: emissionState.turnId,
-    }),
+  const origin = eventCoordinates(input.machine);
+  const history = [...input.messages];
+  await input.emit(createInputRequestedEvent({ requests: [request], ...origin }));
+  const machine = await emitTurnCompleted(
+    input.emit,
+    { ...input.machine, prompt: { origin, request } },
+    history,
   );
-
-  emissionState = await emitTurnEpilogue(input.emit, emissionState, parkedSession.history);
-
   return {
     next: null,
-    session: setHarnessEmissionState(parkedSession, emissionState),
+    session: writeSessionMachine({ ...input.session, history }, machine),
   };
 }
 
@@ -164,7 +147,7 @@ function formatSessionLimitMessage(kind: SessionUsageLimitViolation["kind"]): st
 async function failSessionUsageLimit(input: {
   readonly config: ToolLoopHarnessConfig;
   readonly emit?: ToolLoopHarnessConfig["handleEvent"];
-  readonly emissionState: HarnessEmissionState;
+  readonly machine: SessionMachine;
   readonly session: HarnessSession;
   readonly violation: SessionUsageLimitViolation;
 }): Promise<StepResult> {
@@ -186,20 +169,26 @@ async function failSessionUsageLimit(input: {
           usedTokens: input.violation.usedTokens,
         };
 
+  let session = input.session;
   if (input.emit) {
-    await emitFailedStep(input.emit, input.emissionState, {
-      code:
-        input.violation.kind === "token-cost"
-          ? SESSION_TOKEN_COST_LIMIT_REACHED_CODE
-          : SESSION_TOKEN_LIMIT_REACHED_CODE,
-      details,
-      message,
-      sessionId: input.session.sessionId,
-    });
+    const machine = await emitTurnFailed(
+      input.emit,
+      input.machine,
+      {
+        code:
+          input.violation.kind === "token-cost"
+            ? SESSION_TOKEN_COST_LIMIT_REACHED_CODE
+            : SESSION_TOKEN_LIMIT_REACHED_CODE,
+        details,
+        message,
+      },
+      { sessionId: input.session.sessionId },
+    );
+    session = writeSessionMachine(session, machine);
   }
 
   return {
     next: { done: true, output: "" },
-    session: input.session,
+    session,
   };
 }
