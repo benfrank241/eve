@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CHANNEL_SENTINEL, type CompiledChannel } from "#channel/compiled-channel.js";
 import {
   createCrossChannelToFn,
+  invokeChannelReceive,
   type CrossChannelTarget,
   type CrossChannelToFn,
 } from "#channel/cross-channel-receive.js";
@@ -96,6 +97,75 @@ describe("createCrossChannelToFn", () => {
       fn({}, {});
     };
     expect(invalidCalls).toBeTypeOf("function");
+  });
+
+  it("applies occurrence identity and input policy without exposing them to receive", async () => {
+    const runtime = makeRuntime();
+    const token = "eve-scheduled:fixture:requests:schedule:occurrence";
+    vi.mocked(runtime.resolveContinuation)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue({ sessionId: "winner" });
+    vi.mocked(runtime.createSession).mockResolvedValue({ sessionId: "started" } as never);
+    const channel = makeChannel("scheduled");
+    channel.receive.mockImplementation(
+      async (input: { message: string; auth: null }, { from }) =>
+        await from("thread").send(input.message, { auth: input.auth }),
+    );
+    const deliver = () =>
+      invokeChannelReceive({
+        runtime,
+        target: channel.target,
+        input: { message: "scheduled", target: { id: "thread" }, auth: null },
+        requestInput: false,
+        occurrenceToken: token,
+        describeMissingReceive: () => "missing receive",
+        describeMissingAdapter: () => "missing adapter",
+      });
+    expect((await deliver()).id).toBe("winner");
+    expect(channel.receive).toHaveBeenCalledWith(
+      {
+        message: "scheduled",
+        target: { id: "thread" },
+        auth: null,
+      },
+      expect.anything(),
+    );
+    expect(runtime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilities: { requestInput: false },
+        continuationToken: expect.stringMatching(/^scheduled:scheduled-/u),
+        occurrenceToken: token,
+        continuationConflictCommand: undefined,
+      }),
+    );
+    expect((await deliver()).id).toBe("winner");
+    expect(runtime.createSession).toHaveBeenCalledTimes(1);
+    expect(runtime.dispatchContinuation).not.toHaveBeenCalled();
+  });
+
+  it("preserves interactive namespaced delivery for ordinary receives", async () => {
+    const runtime = makeRuntime();
+    vi.mocked(runtime.dispatchContinuation).mockResolvedValue({ status: "session_not_active" });
+    vi.mocked(runtime.createSession).mockResolvedValue({ sessionId: "session-1" } as never);
+    const channel = makeChannel("ordinary");
+    channel.receive.mockImplementation(
+      async (input: { message: string; auth: null }, { from }) =>
+        await from("thread").send(input.message, { auth: input.auth }),
+    );
+    await createCrossChannelToFn(runtime, [channel.target])(channel.definition, {}).send("hello", {
+      auth: null,
+    });
+    expect(runtime.dispatchContinuation).toHaveBeenCalledWith(
+      expect.objectContaining({ continuationToken: "ordinary:thread" }),
+    );
+    expect(runtime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilities: { requestInput: true },
+        continuationToken: "ordinary:thread",
+        continuationConflictCommand: expect.objectContaining({ kind: "send" }),
+      }),
+    );
+    expect(runtime.resolveContinuation).not.toHaveBeenCalled();
   });
 
   it("delegates to the target channel's receive with a per-target send", async () => {
