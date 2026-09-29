@@ -1,6 +1,7 @@
 import {
   agentCallTurns,
   agentToolSession,
+  followedAgentToolCallIds,
   isAgentCallContentPending,
   type ConversationState,
   type ConversationTask,
@@ -31,7 +32,6 @@ import {
   activeToolSteps,
   agentTaskSummary,
   authorizationTerminalMessage,
-  childToolCallIds,
   endLine,
   firstLine,
   formatAuthorization,
@@ -152,7 +152,7 @@ export class ConversationTranscript {
     const now = Date.now();
     const blocks: Block[] = [];
     this.#aliasConfirmedMessages(conversation.messages);
-    const childToolIds = childToolCallIds(conversation);
+    const childToolIds = followedAgentToolCallIds(conversation);
     const taskCalls = taskCallsById(conversation);
     const withdrawn = new Set(view.data.withdrawnCallIds);
     const labels = view.data.toolLabels;
@@ -175,7 +175,12 @@ export class ConversationTranscript {
           !childToolIds.has(part.toolCallId) &&
           !isPanelRoutedTool(part.toolName),
       );
-      const states = new Map(tools.map((part) => [part, toolState(part, conversation, working)]));
+      const states = new Map(
+        tools.map((part) => [
+          part,
+          toolState(conversation, part, { turnId: message.metadata?.turnId, streaming: working }),
+        ]),
+      );
       const activeSteps = activeToolSteps(states);
 
       for (const [index, part] of message.parts.entries()) {
@@ -399,7 +404,10 @@ export class ConversationTranscript {
         order += 1;
         if (!isToolCallRow(part) || isTaskControlTool(part.toolName)) continue;
         const childTask = childTasks.get(part.toolCallId);
-        const state = toolState(part, child, running);
+        const state = toolState(child, part, {
+          turnId: message.metadata?.turnId,
+          streaming: running,
+        });
         const id = `subagent:${record.callId}:tool:${part.toolCallId}`;
         const block = this.#memoize(id, [part, state.status, record.name], () => {
           const context = this.#presentationContext(part.toolCallId, part, state, options, {
