@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createChannelAddress } from "#channel/channel-address.js";
+import {
+  CreateOnceClaimPendingError,
+  createChannelAddress,
+  resolveCreateOnceOwner,
+} from "#channel/channel-address.js";
 import {
   attachChannelActivityPresentation,
   getChannelActivityPresentation,
@@ -211,6 +215,100 @@ describe("createChannelAddress", () => {
     expect(runtime.dispatchSession).toHaveBeenCalledWith({
       command: { kind: "clear" },
       sessionId: "sess_2",
+    });
+  });
+
+  describe("create-once delivery", () => {
+    const token = "eve-scheduled:app:tasks:schedule_1:execution_1";
+
+    it("uses the occurrence identity for creation, skips the conflict command, and reports the claim owner", async () => {
+      const runtime = createRuntime();
+      vi.mocked(runtime.resolveContinuation)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValue({ sessionId: "winner" });
+      vi.mocked(runtime.createSession).mockResolvedValue({ sessionId: "started" } as never);
+      const address = createChannelAddress({
+        adapter: { kind: "http" },
+        channelName: "slack",
+        continuationToken: "C1:",
+        runtime,
+        requestInput: false,
+        occurrenceToken: token,
+      });
+      const session = await address.send("Run", { auth: null });
+      expect(session.id).toBe("winner");
+      expect(runtime.dispatchContinuation).not.toHaveBeenCalled();
+      expect(runtime.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          continuationToken: "slack:C1:",
+          occurrenceToken: token,
+          continuationConflictCommand: undefined,
+          capabilities: { requestInput: false },
+        }),
+      );
+    });
+
+    it("resolves an existing claim without dispatching or creating", async () => {
+      const runtime = createRuntime();
+      vi.mocked(runtime.resolveContinuation).mockResolvedValue({ sessionId: "winner" });
+      const address = createChannelAddress({
+        adapter: { kind: "http" },
+        channelName: "slack",
+        continuationToken: "C1:",
+        runtime,
+        occurrenceToken: token,
+      });
+      const session = await address.send("Run", { auth: null });
+      expect(session.id).toBe("winner");
+      expect(runtime.createSession).not.toHaveBeenCalled();
+      expect(runtime.dispatchContinuation).not.toHaveBeenCalled();
+    });
+
+    it("converges concurrent admissions on the single claim owner", async () => {
+      const runtime = createRuntime();
+      // Both senders find no claim, both start, and then both see the single winner.
+      vi.mocked(runtime.resolveContinuation)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValue({ sessionId: "run_1" });
+      let started = 0;
+      vi.mocked(runtime.createSession).mockImplementation(
+        async () => ({ sessionId: `run_${++started}` }) as never,
+      );
+      const address = createChannelAddress({
+        adapter: { kind: "http" },
+        channelName: "slack",
+        continuationToken: "C1:",
+        runtime,
+        occurrenceToken: token,
+      });
+      const sessions = await Promise.all([
+        address.send("Run", { auth: null }),
+        address.send("Run", { auth: null }),
+      ]);
+      expect(sessions.map((session) => session.id)).toEqual(["run_1", "run_1"]);
+      expect(runtime.createSession).toHaveBeenCalledTimes(2);
+      for (const [run] of vi.mocked(runtime.createSession).mock.calls) {
+        expect(run.continuationToken).toBe("slack:C1:");
+        expect(run.occurrenceToken).toBe(token);
+        expect(run.continuationConflictCommand).toBeUndefined();
+      }
+      expect(runtime.dispatchContinuation).not.toHaveBeenCalled();
+    });
+
+    it("refuses to report admission when the claim never settles", async () => {
+      const runtime = createRuntime();
+      vi.mocked(runtime.resolveContinuation).mockResolvedValue(undefined);
+      vi.useFakeTimers();
+      try {
+        const owner = expect(
+          resolveCreateOnceOwner(runtime, token, { timeoutMs: 50 }),
+        ).rejects.toBeInstanceOf(CreateOnceClaimPendingError);
+        await vi.advanceTimersByTimeAsync(100);
+        await owner;
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
