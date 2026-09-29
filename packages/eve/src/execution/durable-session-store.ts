@@ -1,4 +1,4 @@
-import { eventCoordinates, readSessionMachine } from "#harness/session-machine.js";
+import { eventCoordinates, readTurnState } from "#harness/turn-state.js";
 import type { HarnessModelMessage } from "#harness/messages.js";
 import { hasProxyInputRequests } from "#harness/proxy-input-requests.js";
 import type { HarnessSession, SessionStateMap } from "#harness/types.js";
@@ -119,6 +119,6 @@ export interface DurableTurnProjection {
 }
 
 export function projectTurn(state: DurableSession["state"]): DurableTurnProjection {
-  const machine = readSessionMachine(state);
-  return { ...eventCoordinates(machine), open: machine.turn !== undefined };
+  const turnState = readTurnState(state);
+  return { ...eventCoordinates(turnState), open: turnState.turn !== undefined };
 }

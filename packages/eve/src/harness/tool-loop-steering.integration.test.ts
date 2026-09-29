@@ -2,7 +2,7 @@ import { jsonSchema } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { createToolLoopHarness } from "#harness/tool-loop.js";
-import { readSessionMachine } from "#harness/session-machine.js";
+import { readTurnState } from "#harness/turn-state.js";
 import {
   createFrameworkUserMessage,
   createUserMessage,
@@ -15,7 +15,7 @@ import { always } from "#tools/approval/policies.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { SessionKey } from "#context/keys.js";
 import { captureLogRecords } from "#internal/testing/log-records.js";
-import { atSessionTurn } from "#internal/testing/session-machine.js";
+import { atSessionTurn } from "#internal/testing/turn-state.js";
 
 // The harness runs outside a workflow body here, where run attributes cannot
 // be written; the attribute contract is covered by emit.test.ts.
@@ -234,7 +234,7 @@ describe("generation steering with the real AI SDK", () => {
     const interrupted = await running;
     expect(providerSignal?.aborted).toBe(true);
     expect(interrupted.steered).toBe(true);
-    expect(readSessionMachine(interrupted.session.state).turn?.id).toBe("turn_0");
+    expect(readTurnState(interrupted.session.state).turn?.id).toBe("turn_0");
     // The provider ignores abort and finishes its obsolete request anyway.
     firstStream!.enqueue({
       type: "tool-call",

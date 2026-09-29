@@ -13,11 +13,7 @@
  */
 import { createInputRequestedEvent } from "#protocol/message.js";
 import { emitTurnCompleted, emitTurnFailed } from "#harness/session-lifecycle.js";
-import {
-  eventCoordinates,
-  writeSessionMachine,
-  type SessionMachine,
-} from "#harness/session-machine.js";
+import { eventCoordinates, writeTurnState, type TurnState } from "#harness/turn-state.js";
 import type { HarnessModelMessage } from "#harness/messages.js";
 import { createSessionLimitContinuationRequest } from "#harness/session-limit-continuation.js";
 import { SessionLimitDeclinedError } from "#harness/turn-cancellation.js";
@@ -35,7 +31,7 @@ const SESSION_TOKEN_COST_LIMIT_REACHED_CODE = "SESSION_TOKEN_COST_LIMIT_REACHED"
 interface SessionLimitPolicyInput {
   readonly config: ToolLoopHarnessConfig;
   readonly emit?: ToolLoopHarnessConfig["handleEvent"];
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
   readonly session: HarnessSession;
 }
 
@@ -111,7 +107,7 @@ export async function enforceSessionUsageLimit(
 async function parkOnSessionUsageLimit(input: {
   readonly config: ToolLoopHarnessConfig;
   readonly emit: NonNullable<ToolLoopHarnessConfig["handleEvent"]>;
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
   readonly messages: readonly HarnessModelMessage[];
   readonly session: HarnessSession;
   readonly violation: SessionUsageLimitViolation;
@@ -120,17 +116,17 @@ async function parkOnSessionUsageLimit(input: {
     sessionId: input.session.sessionId,
     violation: input.violation,
   });
-  const origin = eventCoordinates(input.machine);
+  const origin = eventCoordinates(input.turnState);
   const history = [...input.messages];
   await input.emit(createInputRequestedEvent({ requests: [request], ...origin }));
-  const machine = await emitTurnCompleted(
+  const turnState = await emitTurnCompleted(
     input.emit,
-    { ...input.machine, prompt: { origin, request } },
+    { ...input.turnState, prompt: { origin, request } },
     history,
   );
   return {
     next: null,
-    session: writeSessionMachine({ ...input.session, history }, machine),
+    session: writeTurnState({ ...input.session, history }, turnState),
   };
 }
 
@@ -147,7 +143,7 @@ function formatSessionLimitMessage(kind: SessionUsageLimitViolation["kind"]): st
 async function failSessionUsageLimit(input: {
   readonly config: ToolLoopHarnessConfig;
   readonly emit?: ToolLoopHarnessConfig["handleEvent"];
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
   readonly session: HarnessSession;
   readonly violation: SessionUsageLimitViolation;
 }): Promise<StepResult> {
@@ -171,9 +167,9 @@ async function failSessionUsageLimit(input: {
 
   let session = input.session;
   if (input.emit) {
-    const machine = await emitTurnFailed(
+    const turnState = await emitTurnFailed(
       input.emit,
-      input.machine,
+      input.turnState,
       {
         code:
           input.violation.kind === "token-cost"
@@ -184,7 +180,7 @@ async function failSessionUsageLimit(input: {
       },
       { sessionId: input.session.sessionId },
     );
-    session = writeSessionMachine(session, machine);
+    session = writeTurnState(session, turnState);
   }
 
   return {

@@ -1,7 +1,7 @@
 import { createDurableSessionState } from "#execution/durable-session-store.js";
 import type { TaskToolCall } from "#execution/tasks/calls.js";
 import { getPendingAuthorization } from "#harness/authorization.js";
-import { hasOpenInput, readSessionMachine, runtimeCalls } from "#harness/session-machine.js";
+import { hasOpenInput, readTurnState, runtimeCalls } from "#harness/turn-state.js";
 import type { HarnessSession } from "#harness/types.js";
 import type { DurableStepResult } from "#execution/session/turn-step-types.js";
 import { getTurnUsageState, takeSessionUsageDelta, toUsage } from "#harness/turn-tag-state.js";
@@ -87,15 +87,15 @@ export function derivePendingState(session: HarnessSession): {
   readonly pendingCoordinationCallIds?: readonly string[];
   readonly pendingTaskToolCalls?: readonly TaskToolCall[];
 } {
-  const machine = readSessionMachine(session.state);
+  const turnState = readTurnState(session.state);
   const pendingAuth = getPendingAuthorization(session.state);
-  const waited = runtimeCalls(machine);
+  const waited = runtimeCalls(turnState);
   const base = {
     authorizationAttemptIds: pendingAuth?.challenges.flatMap((challenge) =>
       challenge.attemptId === undefined ? [] : [challenge.attemptId],
     ),
     hasPendingAuthorization: pendingAuth !== undefined,
-    hasPendingInputBatch: hasOpenInput(machine),
+    hasPendingInputBatch: hasOpenInput(turnState),
   };
   if (waited.length === 0) return base;
   return {

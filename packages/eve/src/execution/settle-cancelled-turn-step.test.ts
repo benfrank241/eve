@@ -5,11 +5,7 @@ import { ActivityPendingBlockersKey } from "#context/keys.js";
 import { deserializeContext } from "#context/serialize.js";
 import type { HarnessSession, SessionStateMap } from "#harness/types.js";
 import { readDurableSession } from "#execution/durable-session-store.js";
-import {
-  readSessionMachine,
-  writeSessionMachine,
-  type ParkedCall,
-} from "#harness/session-machine.js";
+import { readTurnState, writeTurnState, type ParkedCall } from "#harness/turn-state.js";
 import type { InputRequest } from "#shared/input.js";
 import { settleCancelledTurnStep } from "#execution/settle-cancelled-turn-step.js";
 import {
@@ -79,8 +75,8 @@ describe("settleCancelledTurnStep", () => {
     // An earlier turn parked Alice's staging approval. Her current turn waits
     // on a research run beside its production approval, and on a session-limit
     // prompt, when Bob cancels it.
-    const parked = writeSessionMachine(base.snapshot.session, {
-      ...readSessionMachine(undefined),
+    const parked = writeTurnState(base.snapshot.session, {
+      ...readTurnState(undefined),
       prompt: {
         origin: { sequence: 1, stepIndex: 1, turnId: "turn_1" },
         request: request("limit-1", "session-limit"),
@@ -124,10 +120,10 @@ describe("settleCancelledTurnStep", () => {
     );
 
     expect(ctx.get(ActivityPendingBlockersKey)).toEqual(["approval-0"]);
-    const machine = readSessionMachine(readDurableSession(result.sessionState).state);
-    expect(machine.turn).toBeUndefined();
-    expect(machine.prompt).toBeUndefined();
-    expect(machine.steps.flatMap((step) => step.calls.map((call) => call.callId))).toEqual([
+    const turnState = readTurnState(readDurableSession(result.sessionState).state);
+    expect(turnState.turn).toBeUndefined();
+    expect(turnState.prompt).toBeUndefined();
+    expect(turnState.steps.flatMap((step) => step.calls.map((call) => call.callId))).toEqual([
       "approval-0",
     ]);
   });

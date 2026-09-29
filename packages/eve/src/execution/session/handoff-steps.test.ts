@@ -33,7 +33,7 @@ describe("validateSessionCheckpointStep", () => {
     expect(readDurableSessionMock).toHaveBeenCalledWith(checkpoint.sessionState);
   });
 
-  it("rejects an unreadable session machine with the current checkpoint version", async () => {
+  it("rejects an unreadable turn state with the current checkpoint version", async () => {
     deserializeContextMock.mockResolvedValue({ require: vi.fn() });
     readDurableSessionMock.mockReturnValue({
       state: { "eve.session": { version: 1, steps: "call" } },

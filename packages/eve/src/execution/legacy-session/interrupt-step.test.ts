@@ -3,7 +3,7 @@ import { EntityConflictError } from "#compiled/@workflow/errors/index.js";
 import { interruptLegacySessionStep } from "./interrupt-step.js";
 import { importConversation } from "./snapshot.js";
 import type { PreparedLegacySession } from "./prepare-step.js";
-import { findWorkflowRun, readSessionMachine } from "#harness/session-machine.js";
+import { findWorkflowRun, readTurnState } from "#harness/turn-state.js";
 const mocks = vi.hoisted(() => ({ cancel: vi.fn(), children: vi.fn(), settle: vi.fn() }));
 vi.mock("#internal/workflow/runtime.js", () => ({
   cancelRun: mocks.cancel,
@@ -58,7 +58,7 @@ describe("legacy pending work", () => {
       "eve.runtime.workflowToolRuns",
     );
     expect(
-      findWorkflowRun(readSessionMachine(result.sessionState.snapshot.session.state), "call"),
+      findWorkflowRun(readTurnState(result.sessionState.snapshot.session.state), "call"),
     ).toBeUndefined();
     expect(mocks.settle).not.toHaveBeenCalled();
   });

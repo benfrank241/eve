@@ -44,7 +44,7 @@ import { normalizeModelStreamError } from "#harness/model-call-error.js";
 import { createOrderedStreamEmitter } from "#harness/ordered-stream-emitter.js";
 import { interruptStreamOnFailure } from "#harness/interruptible-stream.js";
 import { isInlineAuthorizationToolResult } from "#harness/inline-tool-authorization.js";
-import type { EventCoordinates } from "#harness/session-machine.js";
+import type { EventCoordinates } from "#harness/turn-state.js";
 import type { HarnessEmitFn, HarnessToolMap } from "#harness/types.js";
 import { normalizeAssistantStepFinishReason } from "#harness/finish-reason.js";
 

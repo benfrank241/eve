@@ -4,9 +4,9 @@ import type {
   SubagentAuthorizationEventHookPayload,
   SubagentInputRequestHookPayload,
 } from "#channel/types.js";
-import { activeTurnId, readSessionMachine } from "#harness/session-machine.js";
+import { activeTurnId, readTurnState } from "#harness/turn-state.js";
 import { resolveInputOutcome } from "#harness/input-request-resolution.js";
-import type { EventCoordinates as PendingInputBatchEvent } from "#harness/session-machine.js";
+import type { EventCoordinates as PendingInputBatchEvent } from "#harness/turn-state.js";
 import {
   getProxyInputRequests,
   toProxyInputRequestEntries,
@@ -68,8 +68,10 @@ export async function emitProxiedAuthorizationEvent(input: {
 }
 
 async function emitTurnWaiting(emit: HarnessEmitFn, session: HarnessSession): Promise<void> {
-  const machine = readSessionMachine(session.state);
-  await emit(createTurnWaitingEvent({ sequence: machine.sequence, turnId: activeTurnId(machine) }));
+  const turnState = readTurnState(session.state);
+  await emit(
+    createTurnWaitingEvent({ sequence: turnState.sequence, turnId: activeTurnId(turnState) }),
+  );
 }
 
 // ---------------------------------------------------------------------------

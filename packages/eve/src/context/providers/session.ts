@@ -9,14 +9,14 @@ import {
 import type { ContextReader } from "#context/key.js";
 import type { HarnessSession } from "#harness/types.js";
 import type { FrameworkContextProvider } from "#context/provider.js";
-import { activeTurnId, readSessionMachine } from "#harness/session-machine.js";
+import { activeTurnId, readTurnState } from "#harness/turn-state.js";
 
 export const sessionProvider = {
   key: SessionKey,
   create(ctx: ContextReader, session: Pick<HarnessSession, "state">) {
     const currentAuth = ctx.require(AuthKey);
-    const machine = readSessionMachine(session.state);
-    const turnId = activeTurnId(machine);
+    const turnState = readTurnState(session.state);
+    const turnId = activeTurnId(turnState);
 
     return {
       value: Object.freeze({
@@ -26,7 +26,7 @@ export const sessionProvider = {
         },
         parent: ctx.get(ParentSessionKey),
         sessionId: ctx.require(SessionIdKey),
-        turn: { id: turnId, sequence: machine.sequence },
+        turn: { id: turnId, sequence: turnState.sequence },
       }),
     };
   },

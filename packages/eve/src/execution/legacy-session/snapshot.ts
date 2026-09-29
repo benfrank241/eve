@@ -6,7 +6,7 @@ import {
   type DurableSession,
   type DurableSessionState,
 } from "#execution/durable-session-store.js";
-import { readSessionMachine, writeSessionMachine } from "#harness/session-machine.js";
+import { readTurnState, writeTurnState } from "#harness/turn-state.js";
 import { isObject } from "#shared/guards.js";
 
 export type LegacySession = Omit<DurableSession, "history"> & { readonly history: ModelMessage[] };
@@ -53,14 +53,14 @@ export function importConversation(session: LegacySession): DurableSessionState 
           stepIndex: typeof legacy.stepIndex === "number" ? legacy.stepIndex : 0,
         }
       : undefined;
-  const machine = {
-    ...readSessionMachine(undefined),
+  const turnState = {
+    ...readTurnState(undefined),
     sequence: typeof legacy.sequence === "number" ? legacy.sequence : 0,
     started: legacy.sessionStarted === true,
   };
-  const importedState = writeSessionMachine(
+  const importedState = writeTurnState(
     { state },
-    turn === undefined ? machine : { ...machine, turn },
+    turn === undefined ? turnState : { ...turnState, turn },
   ).state;
   const imported = { ...session, history, state: importedState };
   return {

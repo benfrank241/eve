@@ -49,7 +49,7 @@ import { turnStep } from "#execution/session/turn-step.js";
 import { coalesceDeliveries } from "#harness/messages.js";
 import { TurnCancelledError } from "#harness/turn-cancellation.js";
 import { decodeSessionInboxPayload } from "#execution/session-inbox/protocol.js";
-import { findWorkflowRun, readSessionMachine } from "#harness/session-machine.js";
+import { findWorkflowRun, readTurnState } from "#harness/turn-state.js";
 import { resolveRuntimeActionResultsForCallIds } from "#runtime/actions/results.js";
 import type { RuntimeActionResult } from "#shared/action-types.js";
 import type { TokenUsage } from "#shared/token-usage.js";
@@ -327,11 +327,11 @@ export class SessionExecution {
         continue;
       }
       if (next.kind === "runtime-action-result") {
-        const machine = readSessionMachine(this.input.cursor.sessionState.snapshot.session.state);
+        const turnState = readTurnState(this.input.cursor.sessionState.snapshot.session.state);
         const accepted = next.results.filter(
           (result) =>
             result.kind === "tool-result" &&
-            findWorkflowRun(machine, result.callId)?.toolName === result.toolName,
+            findWorkflowRun(turnState, result.callId)?.toolName === result.toolName,
         );
         if (accepted.length > 0) {
           const acceptedAtMs = Date.now();
@@ -399,11 +399,11 @@ export class SessionExecution {
     pendingCallIds: readonly string[],
     settled: readonly RuntimeActionResult[],
   ): Promise<void> {
-    const machine = readSessionMachine(this.input.cursor.sessionState.snapshot.session.state);
+    const turnState = readTurnState(this.input.cursor.sessionState.snapshot.session.state);
     const settledCallIds = new Set(settled.map((result) => result.callId));
     const waited = pendingCallIds.filter((callId) => !settledCallIds.has(callId));
     const runs = waited.flatMap((callId) => {
-      const run = findWorkflowRun(machine, callId);
+      const run = findWorkflowRun(turnState, callId);
       return run === undefined ? [] : [run.address];
     });
     await Promise.all(runs.map((run) => interruptWorkflowToolRun(run)));

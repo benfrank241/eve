@@ -1,7 +1,7 @@
 import type { SessionAuth, SessionParent } from "#context/session-context.js";
 import type { AgentSessionContext } from "#execution/agent-sessions/context.js";
 import { createRuntimeToolResultFromValue } from "#harness/action-result-helpers.js";
-import { startWorkflowCall, updateSessionMachine } from "#harness/session-machine.js";
+import { startWorkflowCall, updateTurnState } from "#harness/turn-state.js";
 import { createLogger, logError } from "#internal/logging.js";
 import type { HarnessSession } from "#harness/types.js";
 import type {
@@ -95,8 +95,8 @@ export async function startWorkflowTask(
   try {
     const started = await startWorkflowToolCallRun(input, { entryPoint: "execute" });
     return {
-      session: updateSessionMachine(session, (machine) =>
-        startWorkflowCall(machine, task.callId, started),
+      session: updateTurnState(session, (turnState) =>
+        startWorkflowCall(turnState, task.callId, started),
       ),
     };
   } catch (error) {

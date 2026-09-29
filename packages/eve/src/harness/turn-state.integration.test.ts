@@ -5,11 +5,7 @@ import { ContextContainer, contextStorage } from "#context/container.js";
 import { AuthKey, SessionIdKey, SessionKey } from "#context/keys.js";
 import { getPendingAuthorization, requestAuthorization } from "#harness/authorization.js";
 import type { HarnessToolDefinition } from "#harness/execute-tool.js";
-import {
-  openApprovalRequests,
-  readSessionMachine,
-  readyWorkflowCalls,
-} from "#harness/session-machine.js";
+import { openApprovalRequests, readTurnState, readyWorkflowCalls } from "#harness/turn-state.js";
 import { stashToolInterrupt } from "#harness/tool-interrupts.js";
 import { createToolLoopHarness } from "#harness/tool-loop.js";
 import type { HarnessSession, StepInput, ToolLoopHarnessConfig } from "#harness/types.js";
@@ -92,7 +88,7 @@ function setup(
   doStream.mockResolvedValue(text("Done."));
   const model = new MockLanguageModelV4({
     doStream,
-    modelId: "session-machine-model",
+    modelId: "turn-state-model",
     provider: "eve-integration-mock",
   });
   const config: ToolLoopHarnessConfig = {
@@ -113,18 +109,18 @@ function setup(
     principalType: "user" as const,
   };
   ctx.set(AuthKey, alice);
-  ctx.set(SessionIdKey, "session-machine");
+  ctx.set(SessionIdKey, "turn-state");
   ctx.set(SessionKey, {
     auth: { current: alice, initiator: alice },
-    sessionId: "session-machine",
+    sessionId: "turn-state",
     turn: { id: "turn_0", sequence: 0 },
   });
   const session: HarnessSession = {
-    agent: { modelReference: { id: "session-machine-model" }, system: "Help Alice.", tools: [] },
+    agent: { modelReference: { id: "turn-state-model" }, system: "Help Alice.", tools: [] },
     compaction: { recentWindowSize: 10, threshold: 100_000 },
-    continuationToken: "http:session-machine",
+    continuationToken: "http:turn-state",
     history: [],
-    sessionId: "session-machine",
+    sessionId: "turn-state",
   };
   const step = (current: HarnessSession, input?: StepInput, stepConfig = config) =>
     contextStorage.run(ctx, () => createToolLoopHarness(stepConfig)(current, input));
@@ -133,9 +129,7 @@ function setup(
 }
 
 function requestIds(session: HarnessSession): string[] {
-  return openApprovalRequests(readSessionMachine(session.state)).map(
-    (request) => request.requestId,
-  );
+  return openApprovalRequests(readTurnState(session.state)).map((request) => request.requestId);
 }
 
 function answer(session: HarnessSession, optionId: "approve" | "cancel"): StepInput {
@@ -152,7 +146,7 @@ function toolResultIds(session: HarnessSession): string[] {
   );
 }
 
-describe("session machine (real AI SDK)", () => {
+describe("turn state (real AI SDK)", () => {
   it("closes the turn on an approval, then runs the approved call once before the model reads it", async () => {
     const deploy = inlineTool("deploy");
     const fixture = setup([deploy], [calls("deploy")]);
@@ -167,7 +161,7 @@ describe("session machine (real AI SDK)", () => {
       "turn.completed",
       "session.waiting",
     ]);
-    expect(readSessionMachine(parked.session.state).turn).toBeUndefined();
+    expect(readTurnState(parked.session.state).turn).toBeUndefined();
 
     const start = fixture.events.length;
     const resumed = await fixture.step(parked.session, answer(parked.session, "approve"));
@@ -180,7 +174,7 @@ describe("session machine (real AI SDK)", () => {
     expect(fixture.eventsSince(start).at(-1)).toBe("session.waiting");
     expect(toolResultIds(resumed.session)).toEqual(["call-0"]);
     expect(JSON.stringify(fixture.doStream.mock.calls[1]![0].prompt)).toContain("deploy done");
-    expect(readSessionMachine(resumed.session.state).steps).toEqual([]);
+    expect(readTurnState(resumed.session.state).steps).toEqual([]);
   });
 
   it("settles a denial without running the call, and reports it rejected", async () => {
@@ -235,10 +229,10 @@ describe("session machine (real AI SDK)", () => {
     const fixture = setup([workflowTool("deploy")], [calls("deploy")]);
     const parked = await fixture.step(fixture.session, { message: "Deploy Alice's release." });
 
-    expect(readyWorkflowCalls(readSessionMachine(parked.session.state))).toEqual([]);
+    expect(readyWorkflowCalls(readTurnState(parked.session.state))).toEqual([]);
 
     const denied = await fixture.step(parked.session, answer(parked.session, "cancel"));
-    expect(readyWorkflowCalls(readSessionMachine(denied.session.state))).toEqual([]);
+    expect(readyWorkflowCalls(readTurnState(denied.session.state))).toEqual([]);
     expect(toolResultIds(denied.session)).toEqual(["call-0"]);
   });
 
@@ -249,9 +243,9 @@ describe("session machine (real AI SDK)", () => {
     const approved = await fixture.step(parked.session, answer(parked.session, "approve"));
 
     expect(approved.next).toBeNull();
-    const machine = readSessionMachine(approved.session.state);
-    expect(machine.turn).toBeDefined();
-    expect(readyWorkflowCalls(machine).map((call) => call.callId)).toEqual(["call-0"]);
+    const turnState = readTurnState(approved.session.state);
+    expect(turnState.turn).toBeDefined();
+    expect(readyWorkflowCalls(turnState).map((call) => call.callId)).toEqual(["call-0"]);
     expect(fixture.doStream).toHaveBeenCalledOnce();
 
     const completed = await fixture.step(approved.session, {
@@ -271,7 +265,7 @@ describe("session machine (real AI SDK)", () => {
 
     const dispatched = await fixture.step(fixture.session, { message: "Research, then deploy." });
 
-    expect(readyWorkflowCalls(readSessionMachine(dispatched.session.state))).toMatchObject([
+    expect(readyWorkflowCalls(readTurnState(dispatched.session.state))).toMatchObject([
       { callId: "call-0" },
     ]);
     expect(requestIds(dispatched.session)).toHaveLength(1);
@@ -324,7 +318,7 @@ describe("session machine (real AI SDK)", () => {
       ...fixture.config,
       clearOnly: true,
     });
-    expect(readSessionMachine(cleared.session.state).steps).toEqual([]);
+    expect(readTurnState(cleared.session.state).steps).toEqual([]);
 
     await fixture.step(cleared.session, approval);
     expect(deploy.execute).not.toHaveBeenCalled();

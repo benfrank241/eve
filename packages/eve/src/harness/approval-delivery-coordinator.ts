@@ -27,7 +27,7 @@ import {
   type AuthorizationChallenge,
 } from "#harness/authorization.js";
 import { isApprovalRequest } from "#harness/input-request-class.js";
-import { allCalls, findStepForRequest, readSessionMachine } from "#harness/session-machine.js";
+import { allCalls, findStepForRequest, readTurnState } from "#harness/turn-state.js";
 import type { HarnessSession, HarnessToolMap, StepInput } from "#harness/types.js";
 import type { InputRequest } from "#shared/input.js";
 
@@ -88,8 +88,8 @@ export async function coordinateApprovalDelivery(input: {
     state: clearPendingAuthorization(expiredState, expiredChallengeIds),
   };
   const audit = getApprovalAuditState(session.state);
-  const machine = readSessionMachine(session.state);
-  const approvals = allCalls(machine).filter(
+  const turnState = readTurnState(session.state);
+  const approvals = allCalls(turnState).filter(
     (call) => call.status === "awaiting-approval" && call.approval !== undefined,
   );
   const pendingRequestIds = new Set(approvals.map((call) => call.approval!.request.requestId));
@@ -534,5 +534,5 @@ async function withAuthorizerTimeout<T>(promise: Promise<T> | T): Promise<T> {
 
 /** The requester recorded on the parked step that holds `requestId`. */
 function requesterOf(session: HarnessSession, requestId: string): SessionAuthContext | null {
-  return findStepForRequest(readSessionMachine(session.state), requestId)?.requester ?? null;
+  return findStepForRequest(readTurnState(session.state), requestId)?.requester ?? null;
 }

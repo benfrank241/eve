@@ -24,7 +24,7 @@ import {
 } from "#runtime/sessions/runtime-context-keys.js";
 import { emitProxiedSubagentEvent } from "#subagents/event-proxy-step.js";
 import { routeDeliverPayload } from "#subagents/hitl-proxy.js";
-import { atSessionTurn } from "#internal/testing/session-machine.js";
+import { atSessionTurn } from "#internal/testing/turn-state.js";
 
 function fixture() {
   const order: string[] = [];

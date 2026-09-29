@@ -24,7 +24,7 @@ import {
   sendWorkflowAskAnswers,
   toToolInputResponseResponder,
 } from "#execution/tools/workflow/answer.js";
-import type { EventCoordinates as PendingInputBatchEvent } from "#harness/session-machine.js";
+import type { EventCoordinates as PendingInputBatchEvent } from "#harness/turn-state.js";
 import type { WorkflowAskRoute } from "#harness/proxy-input-requests.js";
 import {
   createInputResolvedEvent,

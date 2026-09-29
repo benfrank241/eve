@@ -19,8 +19,8 @@ import {
   closeTurn,
   eventCoordinates,
   openTurn,
-  type SessionMachine,
-} from "#harness/session-machine.js";
+  type TurnState,
+} from "#harness/turn-state.js";
 import type { HarnessEmitFn, StepInput } from "#harness/types.js";
 import type { JsonObject } from "#shared/json.js";
 
@@ -34,21 +34,21 @@ import type { JsonObject } from "#shared/json.js";
  */
 export async function emitTurnOpened(input: {
   readonly emit: HarnessEmitFn;
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
   readonly messages: readonly ModelMessage[];
   readonly runtimeIdentity?: RuntimeIdentity;
   readonly stepInput: StepInput;
   readonly traceContext?: RuntimeTraceContext;
-}): Promise<SessionMachine> {
-  const { emit, machine } = input;
-  const opened = openTurn(machine);
+}): Promise<TurnState> {
+  const { emit, turnState } = input;
+  const opened = openTurn(turnState);
   const turnId = activeTurnId(opened);
-  if (!machine.started) {
+  if (!turnState.started) {
     await emit(
       createSessionStartedEvent({ runtime: input.runtimeIdentity, trace: input.traceContext }),
     );
   }
-  if (machine.turn === undefined) {
+  if (turnState.turn === undefined) {
     await emit(
       createTurnStartedEvent({ sequence: opened.sequence, trace: input.traceContext, turnId }),
       input.messages,
@@ -68,11 +68,11 @@ export async function emitTurnOpened(input: {
 
 export async function emitStepStarted(
   emit: HarnessEmitFn,
-  machine: SessionMachine,
+  turnState: TurnState,
   modelId: string,
   messages?: readonly ModelMessage[],
 ): Promise<void> {
-  await emit(createStepStartedEvent({ ...eventCoordinates(machine), modelId }), messages);
+  await emit(createStepStartedEvent({ ...eventCoordinates(turnState), modelId }), messages);
 }
 
 /** Every session that settles without ending waits for the next message. */
@@ -83,27 +83,27 @@ export async function emitSessionWaiting(emit: HarnessEmitFn): Promise<void> {
 /** Closes the turn successfully: `turn.completed` → `session.waiting`. */
 export async function emitTurnCompleted(
   emit: HarnessEmitFn,
-  machine: SessionMachine,
+  turnState: TurnState,
   messages: readonly ModelMessage[],
-): Promise<SessionMachine> {
+): Promise<TurnState> {
   await emit(
-    createTurnCompletedEvent({ sequence: machine.sequence, turnId: activeTurnId(machine) }),
+    createTurnCompletedEvent({ sequence: turnState.sequence, turnId: activeTurnId(turnState) }),
     messages,
   );
   await emitSessionWaiting(emit);
-  return closeTurn(machine);
+  return closeTurn(turnState);
 }
 
 /** A user decision, never a failure: `turn.cancelled` → `session.waiting`. */
 export async function emitTurnCancelled(
   emit: HarnessEmitFn,
-  machine: SessionMachine,
-): Promise<SessionMachine> {
+  turnState: TurnState,
+): Promise<TurnState> {
   await emit(
-    createTurnCancelledEvent({ sequence: machine.sequence, turnId: activeTurnId(machine) }),
+    createTurnCancelledEvent({ sequence: turnState.sequence, turnId: activeTurnId(turnState) }),
   );
   await emitSessionWaiting(emit);
-  return closeTurn(machine);
+  return closeTurn(turnState);
 }
 
 export interface TurnFailure {
@@ -119,11 +119,11 @@ export interface TurnFailure {
  */
 export async function emitTurnFailed(
   emit: HarnessEmitFn,
-  machine: SessionMachine,
+  turnState: TurnState,
   failure: TurnFailure,
   terminal?: { readonly sessionId: string },
-): Promise<SessionMachine> {
-  const coordinates = eventCoordinates(machine);
+): Promise<TurnState> {
+  const coordinates = eventCoordinates(turnState);
   await emit(createStepFailedEvent({ ...failure, ...coordinates }));
   await emit(
     createTurnFailedEvent({
@@ -134,5 +134,5 @@ export async function emitTurnFailed(
   );
   if (terminal === undefined) await emitSessionWaiting(emit);
   else await emit(createSessionFailedEvent({ ...failure, sessionId: terminal.sessionId }));
-  return closeTurn(machine);
+  return closeTurn(turnState);
 }

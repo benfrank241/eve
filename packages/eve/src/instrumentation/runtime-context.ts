@@ -13,7 +13,7 @@ import {
   InitiatorAuthKey,
   ParentSessionKey,
 } from "#context/keys.js";
-import type { EventCoordinates } from "#harness/session-machine.js";
+import type { EventCoordinates } from "#harness/turn-state.js";
 import type { HarnessSession } from "#harness/types.js";
 import type { RuntimeContextResolver } from "#tracing/otel-declaration.js";
 import {

@@ -4,7 +4,7 @@ status: in-progress
 last_updated: "2026-09-29"
 ---
 
-# Session machine
+# Turn state
 
 One durable record owns every piece of pending work a session holds, and one
 module owns every lifecycle transition and the stream events they project.
@@ -40,7 +40,7 @@ Session ─ context ─ turn ─ step ─ call ─ wait
 Everything lives under one key, `eve.session`, in `session.state`:
 
 ```ts
-interface SessionMachine {
+interface TurnState {
   version: 1;
   started: boolean; // session.started was emitted
   sequence: number; // open turn's sequence, or the next turn's

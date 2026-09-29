@@ -9,12 +9,12 @@ import type { InputRequest, InputResponse } from "#shared/input.js";
 import type { JsonObject } from "#shared/json.js";
 import type { SessionStateMap, StepInput } from "#harness/types.js";
 
-// The session machine is the one durable record of where a session is in its
+// The turn state is the one durable record of where a session is in its
 // lifecycle and what work it still owes. Workflow bodies read it, so this
 // module must stay free of runtime dependencies beyond pure helpers.
 
-export const SESSION_MACHINE_KEY = "eve.session";
-const SESSION_MACHINE_VERSION = 1;
+export const TURN_STATE_KEY = "eve.session";
+const TURN_STATE_VERSION = 1;
 
 /** The turn and step every stream event is attributed to. */
 export interface EventCoordinates {
@@ -78,8 +78,8 @@ export interface LimitPrompt {
   readonly request: InputRequest;
 }
 
-export interface SessionMachine {
-  readonly version: typeof SESSION_MACHINE_VERSION;
+export interface TurnState {
+  readonly version: typeof TURN_STATE_VERSION;
   readonly started: boolean;
   /** The open turn's sequence, or the next turn's when none is open. */
   readonly sequence: number;
@@ -92,43 +92,43 @@ export interface SessionMachine {
   readonly grants: readonly string[];
 }
 
-const INITIAL: SessionMachine = {
+const INITIAL: TurnState = {
   grants: [],
   sequence: 0,
   started: false,
   steps: [],
-  version: SESSION_MACHINE_VERSION,
+  version: TURN_STATE_VERSION,
 };
 
-export function readSessionMachine(state: SessionStateMap | undefined): SessionMachine {
+export function readTurnState(state: SessionStateMap | undefined): TurnState {
   // Only this module writes the key, so a matching version vouches for the shape.
-  const raw = state?.[SESSION_MACHINE_KEY] as SessionMachine | undefined;
+  const raw = state?.[TURN_STATE_KEY] as TurnState | undefined;
   if (raw === undefined) return INITIAL;
-  if (!isObject(raw) || raw.version !== SESSION_MACHINE_VERSION || !Array.isArray(raw.steps)) {
+  if (!isObject(raw) || raw.version !== TURN_STATE_VERSION || !Array.isArray(raw.steps)) {
     throw new Error("Unsupported session state: start a new session.");
   }
   return raw;
 }
 
-export function writeSessionMachine<T extends { readonly state?: SessionStateMap }>(
+export function writeTurnState<T extends { readonly state?: SessionStateMap }>(
   session: T,
-  machine: SessionMachine,
+  turnState: TurnState,
 ): T {
-  assertUniqueCalls(machine);
-  return { ...session, state: { ...session.state, [SESSION_MACHINE_KEY]: machine } };
+  assertUniqueCalls(turnState);
+  return { ...session, state: { ...session.state, [TURN_STATE_KEY]: turnState } };
 }
 
-export function updateSessionMachine<T extends { readonly state?: SessionStateMap }>(
+export function updateTurnState<T extends { readonly state?: SessionStateMap }>(
   session: T,
-  update: (machine: SessionMachine) => SessionMachine,
+  update: (turnState: TurnState) => TurnState,
 ): T {
-  return writeSessionMachine(session, update(readSessionMachine(session.state)));
+  return writeTurnState(session, update(readTurnState(session.state)));
 }
 
-function assertUniqueCalls(machine: SessionMachine): void {
+function assertUniqueCalls(turnState: TurnState): void {
   const callIds = new Set<string>();
   const requestIds = new Set<string>();
-  for (const step of machine.steps) {
+  for (const step of turnState.steps) {
     for (const call of step.calls) {
       if (callIds.has(call.callId)) {
         throw new Error(`Parked steps contain duplicate call id "${call.callId}".`);
@@ -149,56 +149,56 @@ function assertUniqueCalls(machine: SessionMachine): void {
 // ---------------------------------------------------------------------------
 
 /** The open turn's id, or the id the next turn will take. */
-export function activeTurnId(machine: SessionMachine): string {
-  return machine.turn?.id ?? `turn_${machine.sequence}`;
+export function activeTurnId(turnState: TurnState): string {
+  return turnState.turn?.id ?? `turn_${turnState.sequence}`;
 }
 
-export function isBetweenTurns(machine: SessionMachine): boolean {
-  return machine.turn === undefined;
+export function isBetweenTurns(turnState: TurnState): boolean {
+  return turnState.turn === undefined;
 }
 
 /** Coordinates of the open turn's current step, or of the next turn's first step. */
-export function eventCoordinates(machine: SessionMachine): EventCoordinates {
+export function eventCoordinates(turnState: TurnState): EventCoordinates {
   return {
-    sequence: machine.sequence,
-    stepIndex: machine.turn?.stepIndex ?? 0,
-    turnId: activeTurnId(machine),
+    sequence: turnState.sequence,
+    stepIndex: turnState.turn?.stepIndex ?? 0,
+    turnId: activeTurnId(turnState),
   };
 }
 
-export function openTurn(machine: SessionMachine): SessionMachine {
-  if (machine.turn !== undefined) return machine;
-  return { ...machine, started: true, turn: { id: `turn_${machine.sequence}`, stepIndex: 0 } };
+export function openTurn(turnState: TurnState): TurnState {
+  if (turnState.turn !== undefined) return turnState;
+  return { ...turnState, started: true, turn: { id: `turn_${turnState.sequence}`, stepIndex: 0 } };
 }
 
-export function advanceStep(machine: SessionMachine): SessionMachine {
-  if (machine.turn === undefined) return machine;
-  const { outputStarted: _outputStarted, ...turn } = machine.turn;
-  return { ...machine, turn: { ...turn, stepIndex: turn.stepIndex + 1 } };
+export function advanceStep(turnState: TurnState): TurnState {
+  if (turnState.turn === undefined) return turnState;
+  const { outputStarted: _outputStarted, ...turn } = turnState.turn;
+  return { ...turnState, turn: { ...turn, stepIndex: turn.stepIndex + 1 } };
 }
 
-export function markOutputStarted(machine: SessionMachine): SessionMachine {
-  if (machine.turn === undefined || machine.turn.outputStarted === true) return machine;
-  return { ...machine, turn: { ...machine.turn, outputStarted: true } };
+export function markOutputStarted(turnState: TurnState): TurnState {
+  if (turnState.turn === undefined || turnState.turn.outputStarted === true) return turnState;
+  return { ...turnState, turn: { ...turnState.turn, outputStarted: true } };
 }
 
 /** Ends the open turn; the next turn takes the following sequence. */
-export function closeTurn(machine: SessionMachine): SessionMachine {
-  const { turn: _turn, ...rest } = machine;
-  return { ...rest, started: true, sequence: machine.sequence + 1 };
+export function closeTurn(turnState: TurnState): TurnState {
+  const { turn: _turn, ...rest } = turnState;
+  return { ...rest, started: true, sequence: turnState.sequence + 1 };
 }
 
 // ---------------------------------------------------------------------------
 // Parked work
 // ---------------------------------------------------------------------------
 
-export function allCalls(machine: SessionMachine): readonly ParkedCall[] {
-  return machine.steps.flatMap((step) => step.calls);
+export function allCalls(turnState: TurnState): readonly ParkedCall[] {
+  return turnState.steps.flatMap((step) => step.calls);
 }
 
 /** Every open approval request, oldest first. */
-export function openApprovalRequests(machine: SessionMachine): readonly InputRequest[] {
-  return allCalls(machine).flatMap((call) =>
+export function openApprovalRequests(turnState: TurnState): readonly InputRequest[] {
+  return allCalls(turnState).flatMap((call) =>
     call.status === "awaiting-approval" && call.approval !== undefined
       ? [call.approval.request]
       : [],
@@ -206,50 +206,52 @@ export function openApprovalRequests(machine: SessionMachine): readonly InputReq
 }
 
 /** Every request a response can still answer: open approvals and the prompt. */
-export function openRequestIds(machine: SessionMachine): ReadonlySet<string> {
-  const ids = new Set(openApprovalRequests(machine).map((request) => request.requestId));
-  if (machine.prompt !== undefined) ids.add(machine.prompt.request.requestId);
+export function openRequestIds(turnState: TurnState): ReadonlySet<string> {
+  const ids = new Set(openApprovalRequests(turnState).map((request) => request.requestId));
+  if (turnState.prompt !== undefined) ids.add(turnState.prompt.request.requestId);
   return ids;
 }
 
-export function hasOpenInput(machine: SessionMachine): boolean {
-  return openRequestIds(machine).size > 0;
+export function hasOpenInput(turnState: TurnState): boolean {
+  return openRequestIds(turnState).size > 0;
 }
 
 export function findStepForRequest(
-  machine: SessionMachine,
+  turnState: TurnState,
   requestId: string,
 ): ParkedStep | undefined {
-  return machine.steps.find((step) =>
+  return turnState.steps.find((step) =>
     step.calls.some((call) => call.approval?.request.requestId === requestId),
   );
 }
 
 /** Calls the open turn waits on the runtime for: workflow runs and task tool calls. */
-export function runtimeCalls(machine: SessionMachine): readonly ParkedCall[] {
-  return allCalls(machine).filter(
+export function runtimeCalls(turnState: TurnState): readonly ParkedCall[] {
+  return allCalls(turnState).filter(
     (call) =>
       (call.status === "ready" || call.status === "running") &&
       (call.workflow !== undefined || call.task !== undefined),
   );
 }
 
-export function readyWorkflowCalls(machine: SessionMachine): readonly ParkedCall[] {
-  return allCalls(machine).filter((call) => call.status === "ready" && call.workflow !== undefined);
+export function readyWorkflowCalls(turnState: TurnState): readonly ParkedCall[] {
+  return allCalls(turnState).filter(
+    (call) => call.status === "ready" && call.workflow !== undefined,
+  );
 }
 
 /** The origin of the step that owns `callId`. */
-export function callOrigin(machine: SessionMachine, callId: string): EventCoordinates | undefined {
-  return machine.steps.find((step) => step.calls.some((call) => call.callId === callId))?.origin;
+export function callOrigin(turnState: TurnState, callId: string): EventCoordinates | undefined {
+  return turnState.steps.find((step) => step.calls.some((call) => call.callId === callId))?.origin;
 }
 
-export function findCall(machine: SessionMachine, callId: string): ParkedCall | undefined {
-  return allCalls(machine).find((call) => call.callId === callId);
+export function findCall(turnState: TurnState, callId: string): ParkedCall | undefined {
+  return allCalls(turnState).find((call) => call.callId === callId);
 }
 
 /** A workflow run the session waits on, by the call it answers. */
 export function findWorkflowRun(
-  machine: SessionMachine,
+  turnState: TurnState,
   callId: string,
 ):
   | {
@@ -259,7 +261,7 @@ export function findWorkflowRun(
       readonly address: { readonly runId: string; readonly hookToken: string };
     }
   | undefined {
-  for (const step of machine.steps) {
+  for (const step of turnState.steps) {
     for (const call of step.calls) {
       if (call.callId !== callId || call.status !== "running") continue;
       const run = call.workflow?.run;
@@ -271,30 +273,30 @@ export function findWorkflowRun(
 }
 
 /** Every started workflow run the session still waits on. */
-export function workflowRuns(machine: SessionMachine): readonly {
+export function workflowRuns(turnState: TurnState): readonly {
   readonly callId: string;
   readonly toolName: string;
   readonly address: { readonly runId: string; readonly hookToken: string };
 }[] {
-  return allCalls(machine).flatMap((call) =>
+  return allCalls(turnState).flatMap((call) =>
     call.status === "running" && call.workflow?.run !== undefined
       ? [{ address: call.workflow.run, callId: call.callId, toolName: call.toolName }]
       : [],
   );
 }
 
-export function parkStep(machine: SessionMachine, step: ParkedStep): SessionMachine {
-  return { ...machine, steps: [...machine.steps, step] };
+export function parkStep(turnState: TurnState, step: ParkedStep): TurnState {
+  return { ...turnState, steps: [...turnState.steps, step] };
 }
 
 export function updateCall(
-  machine: SessionMachine,
+  turnState: TurnState,
   callId: string,
   update: (call: ParkedCall) => ParkedCall,
-): SessionMachine {
+): TurnState {
   return {
-    ...machine,
-    steps: machine.steps.map((step) =>
+    ...turnState,
+    steps: turnState.steps.map((step) =>
       step.calls.some((call) => call.callId === callId)
         ? {
             ...step,
@@ -306,22 +308,22 @@ export function updateCall(
 }
 
 export function settleCall(
-  machine: SessionMachine,
+  turnState: TurnState,
   callId: string,
   result: ToolResultPart,
-): SessionMachine {
-  return updateCall(machine, callId, (call) =>
+): TurnState {
+  return updateCall(turnState, callId, (call) =>
     call.status === "settled" ? call : { ...call, result, status: "settled" },
   );
 }
 
 /** Starts a ready workflow call: the session now waits on its run. */
 export function startWorkflowCall(
-  machine: SessionMachine,
+  turnState: TurnState,
   callId: string,
   run: { readonly runId: string; readonly hookToken: string },
-): SessionMachine {
-  return updateCall(machine, callId, (call) =>
+): TurnState {
+  return updateCall(turnState, callId, (call) =>
     call.workflow === undefined
       ? call
       : { ...call, status: "running", workflow: { ...call.workflow, run } },
@@ -333,17 +335,17 @@ export function startWorkflowCall(
  * each appends to history, in park order. A step's results join its trailing
  * tool message, or form one.
  */
-export function takeSettledSteps(machine: SessionMachine): {
-  readonly machine: SessionMachine;
+export function takeSettledSteps(turnState: TurnState): {
+  readonly turnState: TurnState;
   readonly messages: readonly ModelMessage[];
   readonly steps: readonly ParkedStep[];
 } {
-  const settled = machine.steps.filter((step) =>
+  const settled = turnState.steps.filter((step) =>
     step.calls.every((call) => call.status === "settled"),
   );
-  if (settled.length === 0) return { machine, messages: [], steps: [] };
+  if (settled.length === 0) return { turnState, messages: [], steps: [] };
   return {
-    machine: { ...machine, steps: machine.steps.filter((step) => !settled.includes(step)) },
+    turnState: { ...turnState, steps: turnState.steps.filter((step) => !settled.includes(step)) },
     messages: settled.flatMap(stepTranscript),
     steps: settled,
   };
@@ -393,10 +395,10 @@ function cancelledResult(call: ParkedCall): ToolResultPart {
  * call parked by the turn itself, settles as cancelled so the model sees that
  * the work started and stopped rather than a request left unanswered.
  */
-export function cancelTurnWork(machine: SessionMachine): SessionMachine {
-  const turnId = activeTurnId(machine);
-  let next: SessionMachine = { ...machine, prompt: undefined };
-  for (const step of machine.steps) {
+export function cancelTurnWork(turnState: TurnState): TurnState {
+  const turnId = activeTurnId(turnState);
+  let next: TurnState = { ...turnState, prompt: undefined };
+  for (const step of turnState.steps) {
     const owned = step.origin.turnId === turnId;
     for (const call of step.calls) {
       if (call.status === "settled") continue;
@@ -409,9 +411,9 @@ export function cancelTurnWork(machine: SessionMachine): SessionMachine {
 }
 
 /** A cleared context owes nothing: parked steps, the prompt, queued input, and grants go. */
-export function clearContextWork(machine: SessionMachine): SessionMachine {
+export function clearContextWork(turnState: TurnState): TurnState {
   return {
-    ...machine,
+    ...turnState,
     grants: [],
     prompt: undefined,
     queued: undefined,
@@ -420,15 +422,12 @@ export function clearContextWork(machine: SessionMachine): SessionMachine {
 }
 
 /** Holds input until the prompt or approval policy phase in front of it resolves. */
-export function setQueuedInput(
-  machine: SessionMachine,
-  input: StepInput | undefined,
-): SessionMachine {
-  const { queued: _queued, ...rest } = machine;
+export function setQueuedInput(turnState: TurnState, input: StepInput | undefined): TurnState {
+  const { queued: _queued, ...rest } = turnState;
   return input === undefined ? rest : { ...rest, queued: input };
 }
 
-export function grantApprovals(machine: SessionMachine, keys: readonly string[]): SessionMachine {
-  if (keys.length === 0) return machine;
-  return { ...machine, grants: [...new Set([...machine.grants, ...keys])] };
+export function grantApprovals(turnState: TurnState, keys: readonly string[]): TurnState {
+  if (keys.length === 0) return turnState;
+  return { ...turnState, grants: [...new Set([...turnState.grants, ...keys])] };
 }

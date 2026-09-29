@@ -34,9 +34,9 @@ import {
   updateCall,
   type EventCoordinates,
   type ParkedCall,
-  type SessionMachine,
+  type TurnState,
   type ToolResultPart,
-} from "#harness/session-machine.js";
+} from "#harness/turn-state.js";
 import { isInlineAuthorizationToolResult } from "#harness/inline-tool-authorization.js";
 import { isTurnCancellation } from "#harness/turn-cancellation.js";
 import { projectResultPresentation } from "#harness/tool-presentation.js";
@@ -192,17 +192,17 @@ export async function settleRuntimeResults(input: {
   readonly emit?: HarnessEmitFn;
   readonly results: readonly RuntimeActionResult[] | undefined;
   readonly session: HarnessSession;
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
   readonly tools: HarnessToolMap;
-}): Promise<{ readonly machine: SessionMachine; readonly session: HarnessSession }> {
-  let { machine, session } = input;
+}): Promise<{ readonly turnState: TurnState; readonly session: HarnessSession }> {
+  let { turnState, session } = input;
   const seen = new Set<string>();
   for (const result of input.results ?? []) {
     if (seen.has(result.callId)) continue;
-    const call = findCall(machine, result.callId);
+    const call = findCall(turnState, result.callId);
     if (call === undefined || (call.status !== "running" && call.status !== "ready")) continue;
     seen.add(result.callId);
-    const origin = callOrigin(machine, result.callId)!;
+    const origin = callOrigin(turnState, result.callId)!;
     const run = call.workflow?.run;
     if (run !== undefined) {
       // A finished run's unanswered questions must not reach it after it ends.
@@ -211,14 +211,14 @@ export async function settleRuntimeResults(input: {
         (route) => route.workflowAsk?.runId === run.runId,
       );
     }
-    machine = settleCall(
-      machine,
+    turnState = settleCall(
+      turnState,
       result.callId,
       await runtimeResultToToolResultPart(result, input.tools),
     );
     await input.emit?.(createActionResultEvent({ result, ...origin }));
   }
-  return { machine, session };
+  return { turnState, session };
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +226,7 @@ export async function settleRuntimeResults(input: {
 // ---------------------------------------------------------------------------
 
 export interface ApprovalDecisions {
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
   /** Denials, attributed to the step that requested approval. */
   readonly rejected: readonly {
     readonly origin: EventCoordinates;
@@ -242,18 +242,18 @@ export interface ApprovalDecisions {
  * become ready to dispatch, and approved inline calls wait for eve to run them.
  */
 export function decideApprovals(input: {
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
   readonly responses: readonly InputResponse[];
   readonly resolveApprovalKey: (request: InputRequest) => string | undefined;
   readonly session: HarnessSession;
   readonly tools: HarnessToolMap;
 }): ApprovalDecisions {
-  let { machine, session } = input;
+  let { turnState, session } = input;
   const responses = new Map(input.responses.map((response) => [response.requestId, response]));
-  for (const request of openApprovalRequests(machine)) {
+  for (const request of openApprovalRequests(turnState)) {
     const response = responses.get(request.requestId);
     if (response === undefined) continue;
-    machine = updateCall(machine, request.action.callId, (call) => ({
+    turnState = updateCall(turnState, request.action.callId, (call) => ({
       ...call,
       approval: { ...call.approval!, decision: response },
     }));
@@ -261,7 +261,7 @@ export function decideApprovals(input: {
 
   const resolved: ResolvedInputBatch[] = [];
   const rejected: ApprovalDecisions["rejected"][number][] = [];
-  for (const step of machine.steps) {
+  for (const step of turnState.steps) {
     const approvals = step.calls.filter(
       (call) => call.status === "awaiting-approval" && call.approval !== undefined,
     );
@@ -274,7 +274,7 @@ export function decideApprovals(input: {
       const approval = call.approval!;
       const outcome = resolveApprovalOutcome(approval.decision);
       if (!outcome.approved) {
-        machine = settleCall(machine, call.callId, {
+        turnState = settleCall(turnState, call.callId, {
           output: { reason: outcome.reason, type: "execution-denied" },
           toolCallId: call.callId,
           toolName: call.toolName,
@@ -296,7 +296,7 @@ export function decideApprovals(input: {
       }
       grants.push(input.resolveApprovalKey(approval.request) ?? call.toolName);
       if (input.tools.get(call.toolName)?.workflowId === undefined) {
-        machine = updateCall(machine, call.callId, (current) => ({
+        turnState = updateCall(turnState, call.callId, (current) => ({
           ...current,
           status: "approved",
         }));
@@ -312,13 +312,13 @@ export function decideApprovals(input: {
         turnId: step.origin.turnId,
       });
       session = workflow.session;
-      machine = updateCall(machine, call.callId, (current) => ({
+      turnState = updateCall(turnState, call.callId, (current) => ({
         ...current,
         status: "ready",
         workflow: workflow.call.workflow,
       }));
     }
-    machine = grantApprovals(machine, grants);
+    turnState = grantApprovals(turnState, grants);
     const batch = buildResolvedInputBatch(
       {
         event: step.origin,
@@ -336,7 +336,7 @@ export function decideApprovals(input: {
     if (batch !== undefined) resolved.push(batch);
     if (denials.length > 0) rejected.push({ origin: step.origin, results: denials });
   }
-  return { machine, rejected, resolved, session };
+  return { turnState, rejected, resolved, session };
 }
 
 /**
@@ -345,10 +345,10 @@ export function decideApprovals(input: {
  * approval whose tool authorizes its responders.
  */
 export function resolveApprovalText(
-  machine: SessionMachine,
+  turnState: TurnState,
   input: StepInput | undefined,
 ): StepInput | undefined {
-  const steps = machine.steps.filter((step) =>
+  const steps = turnState.steps.filter((step) =>
     step.calls.some((call) => call.status === "awaiting-approval"),
   );
   if (steps.length !== 1) return input;
@@ -366,11 +366,11 @@ export function resolveApprovalText(
 
 /** Approval keys granted in this context, minus any whose request is still open. */
 export function effectiveGrants(
-  machine: SessionMachine,
+  turnState: TurnState,
   resolveApprovalKey: (request: InputRequest) => string | undefined,
 ): ReadonlySet<string> {
-  const grants = new Set(machine.grants);
-  for (const request of openApprovalRequests(machine)) {
+  const grants = new Set(turnState.grants);
+  for (const request of openApprovalRequests(turnState)) {
     if (!isApprovalRequest(request)) continue;
     grants.delete(resolveApprovalKey(request) ?? request.action.toolName);
   }
@@ -396,17 +396,17 @@ export async function runApprovedCalls(input: {
   readonly abortSignal?: AbortSignal;
   readonly emit?: HarnessEmitFn;
   readonly coordinates: EventCoordinates;
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
   readonly messages: readonly ModelMessage[];
   readonly replayIdentity?: (toolName: string) => string | undefined;
   readonly toolsFor: (origin: EventCoordinates) => Promise<HarnessToolMap>;
 }): Promise<{
   readonly authorizationResults: readonly TypedToolResult<ToolSet>[];
-  readonly machine: SessionMachine;
+  readonly turnState: TurnState;
 }> {
-  let { machine } = input;
+  let { turnState } = input;
   const authorizationResults: TypedToolResult<ToolSet>[] = [];
-  for (const step of machine.steps) {
+  for (const step of turnState.steps) {
     const approved = step.calls.filter((call) => call.status === "approved");
     if (approved.length === 0) continue;
     const tools = await input.toolsFor(step.origin);
@@ -418,7 +418,7 @@ export async function runApprovedCalls(input: {
         messages: input.messages,
         replayIdentity: input.replayIdentity,
       });
-      machine = settleCall(machine, call.callId, executed.part);
+      turnState = settleCall(turnState, call.callId, executed.part);
       if (executed.authorization !== undefined) {
         authorizationResults.push(executed.authorization);
         continue;
@@ -440,7 +440,7 @@ export async function runApprovedCalls(input: {
       );
     }
   }
-  return { authorizationResults, machine };
+  return { authorizationResults, turnState };
 }
 
 async function runApprovedCall(input: {

@@ -2,7 +2,7 @@ import { jsonSchema, type TextStreamPart, type ToolSet } from "ai";
 import { describe, expect, it, vi } from "vitest";
 
 import { emitStreamContent } from "#harness/emission.js";
-import type { EventCoordinates } from "#harness/session-machine.js";
+import type { EventCoordinates } from "#harness/turn-state.js";
 import type { HarnessToolDefinition } from "#harness/execute-tool.js";
 import { resolveWebSearchActivityLabel } from "#harness/provider-tool-schemas.js";
 import type { HarnessEmitFn } from "#harness/types.js";

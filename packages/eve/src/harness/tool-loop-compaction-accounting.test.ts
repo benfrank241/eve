@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { validateHarnessModelMessages } from "#harness/messages.js";
 import { createToolLoopHarness } from "#harness/tool-loop.js";
-import { parkApprovalStep } from "#internal/testing/session-machine.js";
+import { parkApprovalStep } from "#internal/testing/turn-state.js";
 import type { HarnessSession, StepFn, StepNext, ToolLoopHarnessConfig } from "#harness/types.js";
 import {
   applyMemoryRecallBatches,

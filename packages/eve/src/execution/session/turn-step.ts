@@ -34,9 +34,9 @@ import {
   activeTurnId,
   eventCoordinates,
   isBetweenTurns,
-  readSessionMachine,
-  writeSessionMachine,
-} from "#harness/session-machine.js";
+  readTurnState,
+  writeTurnState,
+} from "#harness/turn-state.js";
 import { bindSessionInstrumentation } from "#instrumentation/runtime.js";
 import { RuntimeActionSettlementTimesKey } from "#harness/runtime-action-settlement-state.js";
 import * as agentTraceState from "#tracing/agent-trace-context-store.js";
@@ -183,8 +183,8 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
     rootSessionId: initialSession.rootSessionId ?? initialSession.sessionId,
     sessionId: initialSession.sessionId,
   });
-  const initialMachine = readSessionMachine(initialSession.state);
-  if (!initialMachine.started && !ctx.has(SessionTitleKey) && !ctx.has(ParentSessionKey)) {
+  const initialTurnState = readTurnState(initialSession.state);
+  if (!initialTurnState.started && !ctx.has(SessionTitleKey) && !ctx.has(ParentSessionKey)) {
     const message = rawDelivery?.payloads.find((payload) => payload.message !== undefined)?.message;
     const title = deriveSessionTitle(rawDelivery?.title ?? message);
     if (title !== undefined) {
@@ -199,8 +199,8 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
     // stale start time for deliveries that never start a turn (the park path).
     await contextStorage.run(ctx, () =>
       instrumentation?.preparePreamble({
-        sequence: initialMachine.sequence,
-        sessionStarted: initialMachine.started,
+        sequence: initialTurnState.sequence,
+        sessionStarted: initialTurnState.started,
       }),
     );
     await contextStorage.run(ctx, () =>
@@ -209,9 +209,9 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
         ctx,
         delivery: rawDelivery,
         rootSessionId: initialSession.rootSessionId ?? initialSession.sessionId,
-        sequence: initialMachine.sequence,
+        sequence: initialTurnState.sequence,
         sessionId: initialSession.sessionId,
-        turnId: activeTurnId(initialMachine),
+        turnId: activeTurnId(initialTurnState),
       }),
     );
   }
@@ -257,7 +257,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       sink,
     });
     const previousAdapterState =
-      delivery !== undefined && !isBetweenTurns(initialMachine)
+      delivery !== undefined && !isBetweenTurns(initialTurnState)
         ? structuredClone(adapterCtx.state)
         : undefined;
     // Run the adapter's deliver hook for each queued payload and coalesce
@@ -282,7 +282,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       resolved = results.length === 0 ? undefined : results.reduce(coalesceTurnInputs);
     }
     const ignoredActiveDelivery =
-      delivery !== undefined && resolved === undefined && !isBetweenTurns(initialMachine);
+      delivery !== undefined && resolved === undefined && !isBetweenTurns(initialTurnState);
     if (ignoredActiveDelivery) {
       // The adapter sees the incoming caller, but an ignored correction must
       // not change the identity or reply destination of the interrupted work.
@@ -294,11 +294,11 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
         const ids = rawDelivery.deliveryMetadata?.map((entry) => entry.deliveryId) ?? [];
         ctx.set(
           TurnDeliveryIdsKey,
-          initialMachine.turn !== undefined
+          initialTurnState.turn !== undefined
             ? [...new Set([...(ctx.get(TurnDeliveryIdsKey) ?? []), ...ids])]
             : ids,
         );
-      } else if (!initialMachine.started && ctx.get(ChannelDeliveryKey) !== undefined) {
+      } else if (!initialTurnState.started && ctx.get(ChannelDeliveryKey) !== undefined) {
         ctx.set(TurnDeliveryIdsKey, [ctx.require(ChannelDeliveryKey).deliveryId]);
       }
     }
@@ -311,7 +311,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
     }
 
     activityCohort.updateActivityRootForDelivery({
-      activeTurnId: activeTurnId(initialMachine),
+      activeTurnId: activeTurnId(initialTurnState),
       ctx,
       delivery: ignoredActiveDelivery ? undefined : rawDelivery,
       sessionState: durableSession.state,
@@ -322,7 +322,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       setChannelContext(ctx, updatedAdapter);
     }
 
-    if (delivery !== undefined && resolved === undefined && isBetweenTurns(initialMachine)) {
+    if (delivery !== undefined && resolved === undefined && isBetweenTurns(initialTurnState)) {
       await contextStorage.run(ctx, () =>
         instrumentation?.instrumentChannelDelivery({
           ctx,
@@ -354,7 +354,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       const dynamicRuntimeRevision = deploymentId
         ? `deployment:${deploymentId}`
         : await resolveRuntimeCompiledArtifactsVersionedCacheKey(bundle.compiledArtifactsSource);
-      const sessionStarted = initialMachine.started;
+      const sessionStarted = initialTurnState.started;
 
       ctx.setVirtualContext(StaticModelReferenceKey, effectiveAgent.turnAgent.model ?? null);
       if (!sessionStarted) {
@@ -382,12 +382,12 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
               }),
           ),
         ]);
-        if (!isBetweenTurns(initialMachine)) {
+        if (!isBetweenTurns(initialTurnState)) {
           await rebindMissingCompiledDynamicToolCallbacks({
             ctx,
             event: createTurnStartedEvent({
-              sequence: initialMachine.sequence,
-              turnId: activeTurnId(initialMachine),
+              sequence: initialTurnState.sequence,
+              turnId: activeTurnId(initialTurnState),
             }),
             messages: history.initial.messages,
             resolvers: dynamicToolResolvers,
@@ -457,25 +457,25 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
               firstCall && resolved?.outputSchema !== undefined
                 ? { ...enrichedSession, outputSchema: resolved.outputSchema }
                 : enrichedSession;
-            const connectionMachine = readSessionMachine(schemaSession.state);
+            const connectionState = readTurnState(schemaSession.state);
             await dynamicConnections.rehydrate(
-              connectionMachine.started,
+              connectionState.started,
               runtimeIdentity,
-              isBetweenTurns(connectionMachine)
+              isBetweenTurns(connectionState)
                 ? undefined
                 : {
-                    sequence: connectionMachine.sequence,
-                    turnId: activeTurnId(connectionMachine),
+                    sequence: connectionState.sequence,
+                    turnId: activeTurnId(connectionState),
                   },
             );
             if (firstCall && completedAuths) {
-              let machine = readSessionMachine(schemaSession.state);
+              let turnState = readTurnState(schemaSession.state);
               const startsTurn = completedAuths.some(
                 ({ candidateId }) => candidateId === undefined,
               );
-              if (startsTurn && isBetweenTurns(machine)) {
+              if (startsTurn && isBetweenTurns(turnState)) {
                 const turnInput = createTurnInputMessages(
-                  mergeStepInputs(machine.queued, stepInput),
+                  mergeStepInputs(turnState.queued, stepInput),
                 );
                 prepareDynamicInstructionPreamble(ctx, history.messages(schemaSession));
                 prepareMemoryPreamble(ctx, {
@@ -487,12 +487,12 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
                 let instructionMessages: readonly UserModelMessage[] = [];
                 const traceContext = await prepareWorkflowPreambleTrace({
                   instrumentation,
-                  machine,
+                  turnState,
                 });
                 try {
-                  machine = await emitTurnOpened({
+                  turnState = await emitTurnOpened({
                     emit: handleEvent,
-                    machine,
+                    turnState,
                     messages: history.projector({
                       messages: [...schemaSession.history, ...turnInput],
                       state: schemaSession.state,
@@ -514,7 +514,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
                     state: memoryCommit?.state ?? schemaSession.state,
                   };
                 }
-                schemaSession = writeSessionMachine(schemaSession, machine);
+                schemaSession = writeTurnState(schemaSession, turnState);
               }
               for (const { authorization, result, candidateId } of completedAuths) {
                 await handleEvent(
@@ -524,7 +524,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
                     candidateId,
                     name: result.name,
                     outcome: "authorized",
-                    ...eventCoordinates(machine),
+                    ...eventCoordinates(turnState),
                   }),
                 );
               }

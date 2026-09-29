@@ -27,7 +27,7 @@ import {
   writeTaskTable,
 } from "#execution/tasks/table.js";
 import { getSessionTokenUsage } from "#harness/turn-tag-state.js";
-import { parkWorkflowRuns } from "#internal/testing/session-machine.js";
+import { parkWorkflowRuns } from "#internal/testing/turn-state.js";
 import { interruptWorkflowToolRun } from "#execution/tools/workflow/interrupt.js";
 import type { TokenUsage } from "#shared/token-usage.js";
 

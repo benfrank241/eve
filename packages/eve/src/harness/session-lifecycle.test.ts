@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { emitTurnOpened } from "#harness/session-lifecycle.js";
-import { openTurn, readSessionMachine } from "#harness/session-machine.js";
+import { openTurn, readTurnState } from "#harness/turn-state.js";
 import type { HarnessEmitFn } from "#harness/types.js";
 
 function collect(): { emit: HarnessEmitFn; events: Parameters<HarnessEmitFn>[0][] } {
@@ -23,9 +23,9 @@ describe("emitTurnOpened", () => {
       traceId: "0123456789abcdef0123456789abcdef",
     };
 
-    const machine = await emitTurnOpened({
+    const turnState = await emitTurnOpened({
       emit,
-      machine: readSessionMachine(undefined),
+      turnState: readTurnState(undefined),
       messages: [{ content: "hello", role: "user" }],
       stepInput: { message: "hello" },
       traceContext: trace,
@@ -36,24 +36,24 @@ describe("emitTurnOpened", () => {
       { data: { sequence: 0, trace, turnId: "turn_0" }, type: "turn.started" },
     ]);
     expect(events[2]).toMatchObject({ type: "message.received" });
-    expect(machine).toMatchObject({ started: true, turn: { id: "turn_0", stepIndex: 0 } });
+    expect(turnState).toMatchObject({ started: true, turn: { id: "turn_0", stepIndex: 0 } });
   });
 
   it("re-enters an open turn with only the steering message", async () => {
     const { emit, events } = collect();
     const open = {
-      ...openTurn(readSessionMachine(undefined)),
+      ...openTurn(readTurnState(undefined)),
       turn: { id: "turn_0", stepIndex: 2 },
     };
 
-    const machine = await emitTurnOpened({
+    const turnState = await emitTurnOpened({
       emit,
-      machine: open,
+      turnState: open,
       messages: [],
       stepInput: { message: "Use Fahrenheit." },
     });
 
     expect(events.map((event) => event.type)).toEqual(["message.received"]);
-    expect(machine).toBe(open);
+    expect(turnState).toBe(open);
   });
 });

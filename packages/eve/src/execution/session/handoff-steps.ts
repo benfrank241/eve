@@ -1,4 +1,4 @@
-import { readSessionMachine } from "#harness/session-machine.js";
+import { readTurnState } from "#harness/turn-state.js";
 import { deserializeContext } from "#context/serialize.js";
 import { readDurableSession, type DurableSessionState } from "#execution/durable-session-store.js";
 import {
@@ -15,9 +15,13 @@ import { isObject } from "#shared/guards.js";
 /** Parses retained work with this deployment's code before deciding whether it can move. */
 export function isSessionStateIdleForHandoff(sessionState: DurableSessionState): boolean {
   const { state } = readDurableSession(sessionState);
-  // Decoding the session machine rejects corrupt state before any busy-work shortcut.
-  const machine = readSessionMachine(state);
-  if (machine.steps.length > 0 || machine.prompt !== undefined || machine.queued !== undefined) {
+  // Decoding the turn state rejects corrupt state before any busy-work shortcut.
+  const turnState = readTurnState(state);
+  if (
+    turnState.steps.length > 0 ||
+    turnState.prompt !== undefined ||
+    turnState.queued !== undefined
+  ) {
     return false;
   }
 

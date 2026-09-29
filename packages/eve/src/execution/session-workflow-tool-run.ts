@@ -17,7 +17,7 @@ import {
   workflowToolRunOutcomeToToolResult,
   workflowToolRunRequestToInputRequestPayload,
 } from "#execution/tools/workflow/owner-inbox.js";
-import { findWorkflowRun, readSessionMachine } from "#harness/session-machine.js";
+import { findWorkflowRun, readTurnState } from "#harness/turn-state.js";
 import { runProxySubagentEventStep } from "#subagents/event-proxy-step.js";
 import type { WorkflowAskRoute } from "#harness/proxy-input-requests.js";
 import type { RuntimeActionResult } from "#shared/action-types.js";
@@ -66,7 +66,7 @@ async function handleWorkflowToolRunOutcome(
 ): Promise<RuntimeActionResult | undefined> {
   const { cursor, message } = input;
   const recorded = findWorkflowRun(
-    readSessionMachine(cursor.sessionState.snapshot.session.state),
+    readTurnState(cursor.sessionState.snapshot.session.state),
     message.from.callId,
   );
   if (

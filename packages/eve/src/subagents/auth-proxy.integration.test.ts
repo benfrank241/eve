@@ -9,7 +9,7 @@ import { ContextContainer } from "#context/container.js";
 import { AuthKey, ContinuationTokenKey, SessionIdKey } from "#context/keys.js";
 import { emitProxiedSubagentEvent } from "#subagents/event-proxy-step.js";
 import { projectToDurableSession } from "#execution/session.js";
-import { atSessionTurn } from "#internal/testing/session-machine.js";
+import { atSessionTurn } from "#internal/testing/turn-state.js";
 import type { HarnessSession } from "#harness/types.js";
 import type { MessageStreamEvent } from "#protocol/message.js";
 import type { StreamEventHook } from "#public/definitions/hook.js";

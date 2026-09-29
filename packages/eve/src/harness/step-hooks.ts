@@ -22,7 +22,7 @@ import {
   createRuntimeToolResultFromMessagePart,
   createRuntimeToolResultFromStepResult,
 } from "#harness/action-result-helpers.js";
-import type { EventCoordinates } from "#harness/session-machine.js";
+import type { EventCoordinates } from "#harness/turn-state.js";
 import { createStepStartedEvent } from "#protocol/message.js";
 import { normalizeAssistantStepFinishReason } from "#harness/finish-reason.js";
 import { extractToolApprovalInputRequests } from "#harness/input-extraction.js";

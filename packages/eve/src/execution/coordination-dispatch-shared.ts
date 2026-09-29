@@ -25,10 +25,10 @@ import type { HarnessSession } from "#harness/types.js";
 import { deriveRootTurnActivityWorkId } from "#execution/activity-work-id.js";
 import {
   callOrigin,
-  readSessionMachine,
+  readTurnState,
   readyWorkflowCalls,
   type EventCoordinates,
-} from "#harness/session-machine.js";
+} from "#harness/turn-state.js";
 import type { ActivityWorkIdentityV1 } from "#protocol/activity.js";
 import type { RuntimeActionResult, RuntimeWorkflowTaskRequest } from "#shared/action-types.js";
 import type { SessionParent } from "#channel/types.js";
@@ -100,12 +100,12 @@ export async function prepareCoordinationDispatch(input: {
   readonly sessionState: DurableSessionState;
 }): Promise<PreparedCoordinationDispatch | undefined> {
   const durableSession = readDurableSession(input.sessionState);
-  const machine = readSessionMachine(durableSession.state);
-  const ready = readyWorkflowCalls(machine);
+  const turnState = readTurnState(durableSession.state);
+  const ready = readyWorkflowCalls(turnState);
   if (ready.length === 0) return undefined;
   const requests = ready.map((call) => call.workflow!.request);
   const origins = new Map(
-    requests.map((request) => [request.callId, callOrigin(machine, request.callId)!]),
+    requests.map((request) => [request.callId, callOrigin(turnState, request.callId)!]),
   );
   const ctx = await deserializeContext(input.serializedContext);
   const prepared = await prepareActionDispatch({

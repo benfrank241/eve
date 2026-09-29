@@ -26,7 +26,7 @@ import { createRuntimeToolRegistry } from "#runtime/tools/registry.js";
 import { createPreparedRuntimeSubagentTool } from "#runtime/subagents/registry.js";
 import { createExecutionNodeStep, createNodeHarnessTools } from "#execution/node-step.js";
 import { createSession } from "#execution/session.js";
-import { parkApprovalStep } from "#internal/testing/session-machine.js";
+import { parkApprovalStep } from "#internal/testing/turn-state.js";
 import { createStubSandboxRegistry } from "#internal/testing/stub-sandbox-registry.js";
 import { defineTool } from "#tools/definition.js";
 import { stampDurableDynamicCallback } from "#tools/durable-callbacks.js";

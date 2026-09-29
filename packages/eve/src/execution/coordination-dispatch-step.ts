@@ -1,4 +1,4 @@
-/** Starts the runs of the workflow calls the session machine holds ready. */
+/** Starts the runs of the workflow calls the turn state holds ready. */
 
 import {
   prepareCoordinationDispatch,

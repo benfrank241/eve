@@ -14,10 +14,10 @@ import {
 import { emitTurnCancelled } from "#harness/session-lifecycle.js";
 import {
   cancelTurnWork,
-  readSessionMachine,
+  readTurnState,
   takeSettledSteps,
-  writeSessionMachine,
-} from "#harness/session-machine.js";
+  writeTurnState,
+} from "#harness/turn-state.js";
 import { validateHarnessModelMessages } from "#harness/messages.js";
 import { clearAllProxyInputRequests } from "#harness/proxy-input-requests.js";
 import { getTurnUsageState, takeSessionUsageDelta } from "#harness/turn-tag-state.js";
@@ -62,14 +62,14 @@ export async function settleCancelledTurn(
   const ctx = await deserializeContext(input.serializedContext);
   // Every call the turn made or waits on settles as cancelled, and so does the
   // session-limit prompt: the cancel withdraws what nobody may answer now.
-  const cancelled = takeSettledSteps(cancelTurnWork(readSessionMachine(durableSession.state)));
-  const cancelledDurable = writeSessionMachine(
+  const cancelled = takeSettledSteps(cancelTurnWork(readTurnState(durableSession.state)));
+  const cancelledDurable = writeTurnState(
     {
       ...durableSession,
       history: validateHarnessModelMessages([...durableSession.history, ...cancelled.messages]),
       outputSchema: undefined,
     },
-    cancelled.machine,
+    cancelled.turnState,
   );
   // Before `turn.cancelled` projects, so only what stays answerable holds the work open.
   retainAnswerableActivityBlockers(ctx, cancelledDurable.state);
@@ -81,13 +81,13 @@ export async function settleCancelledTurn(
       sessionWritable: input.sessionWritable,
     },
     async (emit, scopedSession) => ({
-      result: await emitTurnCancelled(emit, cancelled.machine),
+      result: await emitTurnCancelled(emit, cancelled.turnState),
       session: scopedSession,
     }),
   );
   const cancelledSession = reconcileSessionContinuationToken(
     ctx,
-    clearAllProxyInputRequests(writeSessionMachine(emitted.session, emitted.result)),
+    clearAllProxyInputRequests(writeTurnState(emitted.session, emitted.result)),
   );
   const base = { serializedContext: serializeContext(ctx) };
   if (!input.reportUsage || getTurnUsageState(cancelledSession.state) === undefined) {

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { AuthKey, ChannelInstrumentationKey } from "#context/keys.js";
-import type { EventCoordinates } from "#harness/session-machine.js";
+import type { EventCoordinates } from "#harness/turn-state.js";
 import {
   buildTelemetryRuntimeContext,
   type BuildTelemetryRuntimeContextInput,

@@ -56,7 +56,7 @@ import {
 } from "#harness/messages.js";
 import { PendingSkillAnnouncementKey } from "#context/dynamic-skill-lifecycle.js";
 import { deserializeContext, serializeContext } from "#context/serialize.js";
-import { readSessionMachine, writeSessionMachine } from "#harness/session-machine.js";
+import { readTurnState, writeTurnState } from "#harness/turn-state.js";
 import { appendMissingToolResultMessages, createToolLoopHarness } from "#harness/tool-loop.js";
 import { createTask, writeTaskTable } from "#execution/tasks/table.js";
 import { SessionLimitDeclinedError, TurnCancelledError } from "#harness/turn-cancellation.js";
@@ -77,7 +77,7 @@ import {
 } from "#instrumentation/runtime.js";
 import type { RuntimeContextResolver } from "#tracing/otel-declaration.js";
 import { captureLogRecords } from "#internal/testing/log-records.js";
-import { atSessionTurn } from "#internal/testing/session-machine.js";
+import { atSessionTurn } from "#internal/testing/turn-state.js";
 
 // The harness runs outside a workflow body here, where run attributes cannot
 // be written; the attribute contract is covered by emit.test.ts.
@@ -854,7 +854,7 @@ describe("createToolLoopHarness", () => {
 
     const first = await runStep(session, { message: "What's the weather in NY?" });
     expect(typeof first.next).toBe("function");
-    expect(readSessionMachine(first.session.state)).toMatchObject({
+    expect(readTurnState(first.session.state)).toMatchObject({
       turn: { id: "turn_0", stepIndex: 1 },
     });
 
@@ -869,8 +869,8 @@ describe("createToolLoopHarness", () => {
       kind: "user",
       role: "user",
     });
-    expect(readSessionMachine(second.session.state)).toMatchObject({ sequence: 1 });
-    expect(readSessionMachine(second.session.state).turn).toBeUndefined();
+    expect(readTurnState(second.session.state)).toMatchObject({ sequence: 1 });
+    expect(readTurnState(second.session.state).turn).toBeUndefined();
   });
 
   it("waits on a task_wait parked beside an approval, but not on an invalid task_cancel", async () => {
@@ -916,14 +916,14 @@ describe("createToolLoopHarness", () => {
     const parked = await runStep(createTestSession(), { message: "Run the gate and wait." });
 
     expect(parked.next).toBeNull();
-    const machine = readSessionMachine(parked.session.state);
-    expect(machine.steps).toHaveLength(1);
-    expect(machine.steps[0]!.calls.map(({ callId, status }) => ({ callId, status }))).toEqual([
+    const turnState = readTurnState(parked.session.state);
+    expect(turnState.steps).toHaveLength(1);
+    expect(turnState.steps[0]!.calls.map(({ callId, status }) => ({ callId, status }))).toEqual([
       { callId: "gate-1", status: "awaiting-approval" },
       { callId: "wait-1", status: "running" },
     ]);
     // The turn stays open while it waits on the runtime for the task.
-    expect(machine.turn).toBeDefined();
+    expect(turnState.turn).toBeDefined();
     expect(events.map((event) => event.type)).not.toContain("turn.completed");
   });
 
@@ -6144,7 +6144,7 @@ describe("createToolLoopHarness", () => {
       { message: "Search, then run the gated tool." },
     );
 
-    const pendingResponseMessages = readSessionMachine(result.session.state).steps[0]?.response;
+    const pendingResponseMessages = readTurnState(result.session.state).steps[0]?.response;
 
     expect(result.next).toBeNull();
     expect(pendingResponseMessages).toEqual([
@@ -9693,7 +9693,7 @@ describe("createToolLoopHarness", () => {
                 : undefined,
           }),
         );
-        const initial = writeSessionMachine(
+        const initial = writeTurnState(
           createTestSession({
             history: [
               { role: "user", content: "Previous request", kind: "user" as const },

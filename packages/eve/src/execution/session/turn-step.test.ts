@@ -31,12 +31,12 @@ import { TurnCancelledError } from "#harness/turn-cancellation.js";
 import { getPendingAuthorization, setPendingAuthorization } from "#harness/authorization.js";
 import { upsertProxyInputRequests } from "#harness/proxy-input-requests.js";
 import {
-  readSessionMachine,
+  readTurnState,
   setQueuedInput,
-  updateSessionMachine,
-  writeSessionMachine,
-} from "#harness/session-machine.js";
-import { atSessionTurn, parkApprovalStep } from "#internal/testing/session-machine.js";
+  updateTurnState,
+  writeTurnState,
+} from "#harness/turn-state.js";
+import { atSessionTurn, parkApprovalStep } from "#internal/testing/turn-state.js";
 import type { HarnessSession, StepFn, StepResult } from "#harness/types.js";
 import { createRuntimeHookRegistry } from "#runtime/hooks/registry.js";
 import {
@@ -686,8 +686,8 @@ describe("dispatchCoordinationStep", () => {
       workflowId: "workflow//eve//research",
     } as const;
     const origin = { sequence: 3, stepIndex: 2, turnId: "turn_3" };
-    const session = writeSessionMachine(createStubSession(), {
-      ...readSessionMachine(undefined),
+    const session = writeTurnState(createStubSession(), {
+      ...readTurnState(undefined),
       sequence: 3,
       started: true,
       steps: [
@@ -2529,7 +2529,7 @@ describe("turnStep", () => {
     };
     installSessionStoreMocks([
       inputKind === "deferred"
-        ? updateSessionMachine(session, (machine) => setQueuedInput(machine, turnInput))
+        ? updateTurnState(session, (turnState) => setQueuedInput(turnState, turnInput))
         : session,
     ]);
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({

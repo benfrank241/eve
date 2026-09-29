@@ -19,7 +19,7 @@ import { createActivitySnapshot, reduceActivityBatch } from "#execution/session-
 import type { ActivitySnapshotV1, ActivityWorkIdentityV1 } from "#protocol/activity.js";
 import type { MessageStreamEvent } from "#protocol/message.js";
 import { captureLogRecords } from "#internal/testing/log-records.js";
-import { parkApprovalStep } from "#internal/testing/session-machine.js";
+import { parkApprovalStep } from "#internal/testing/turn-state.js";
 import type { HarnessSession, SessionStateMap } from "#harness/types.js";
 
 const at = "2026-01-01T00:00:00.000Z";

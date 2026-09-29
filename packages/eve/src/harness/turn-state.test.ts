@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  readSessionMachine,
+  readTurnState,
   settleCall,
   takeSettledSteps,
-  type SessionMachine,
-} from "#harness/session-machine.js";
+  type TurnState,
+} from "#harness/turn-state.js";
 
 const origin = { sequence: 0, stepIndex: 0, turnId: "turn_0" };
 
-function machineWithStep(): SessionMachine {
+function turnStateWithStep(): TurnState {
   return {
-    ...readSessionMachine(undefined),
+    ...readTurnState(undefined),
     steps: [
       {
         calls: [
@@ -56,12 +56,12 @@ function result(toolCallId: string) {
 
 describe("takeSettledSteps", () => {
   it("commits a step once, when its last call settles, joining its results to its tool message", () => {
-    const partial = settleCall(machineWithStep(), "review", result("review"));
+    const partial = settleCall(turnStateWithStep(), "review", result("review"));
     expect(takeSettledSteps(partial).messages).toEqual([]);
 
     const settled = takeSettledSteps(settleCall(partial, "deploy", result("deploy")));
 
-    expect(settled.machine.steps).toEqual([]);
+    expect(settled.turnState.steps).toEqual([]);
     expect(settled.messages).toHaveLength(2);
     expect(settled.messages[1]).toMatchObject({
       content: [{ toolCallId: "lint" }, { toolCallId: "review" }, { toolCallId: "deploy" }],
@@ -70,9 +70,9 @@ describe("takeSettledSteps", () => {
   });
 });
 
-describe("readSessionMachine", () => {
-  it("rejects state written by another session machine version", () => {
-    expect(() => readSessionMachine({ "eve.session": { steps: [], version: 0 } })).toThrow(
+describe("readTurnState", () => {
+  it("rejects state written by another turn state version", () => {
+    expect(() => readTurnState({ "eve.session": { steps: [], version: 0 } })).toThrow(
       "Unsupported session state: start a new session.",
     );
   });

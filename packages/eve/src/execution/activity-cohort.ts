@@ -8,7 +8,7 @@ import {
   ActivityRootTurnIdKey,
   ActivityTaskCallsKey,
 } from "#context/keys.js";
-import { openApprovalRequests, readSessionMachine } from "#harness/session-machine.js";
+import { openApprovalRequests, readTurnState } from "#harness/turn-state.js";
 import type { SessionStateMap } from "#harness/types.js";
 import type { UnstampedMessageStreamEvent } from "#protocol/message.js";
 
@@ -33,7 +33,7 @@ export function updateActivityRootForDelivery(input: {
     ),
   );
   if (responseIds.size === 0) return;
-  const steps = readSessionMachine(input.sessionState).steps;
+  const steps = readTurnState(input.sessionState).steps;
   const rootTurnId =
     steps.find((step) =>
       step.calls.some(
@@ -121,7 +121,7 @@ export function retainAnswerableActivityBlockers(
   const pending = ctx.get(ActivityPendingBlockersKey);
   if (pending === undefined) return;
   const answerable = new Set([
-    ...openApprovalRequests(readSessionMachine(sessionState)).map((request) => request.requestId),
+    ...openApprovalRequests(readTurnState(sessionState)).map((request) => request.requestId),
     ...(getPendingAuthorization(sessionState)?.challenges ?? []).flatMap(
       (challenge) => challenge.attemptId ?? challenge.candidateId ?? [],
     ),

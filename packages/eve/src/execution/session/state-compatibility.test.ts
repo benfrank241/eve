@@ -17,12 +17,12 @@ describe("handoff state inspection", () => {
       ),
     ).toBe(true);
   });
-  it("parses the session machine before checking for waiting work", () => {
+  it("parses the turn state before checking for waiting work", () => {
     expect(() =>
       isSessionStateIdleForHandoff(checkpoint({ "eve.session": { version: 1, steps: "call" } })),
     ).toThrow("Unsupported session state");
   });
-  it("does not skip session machine parsing when another registry is busy", () => {
+  it("does not skip turn state parsing when another registry is busy", () => {
     expect(() =>
       isSessionStateIdleForHandoff(
         checkpoint({
@@ -36,9 +36,9 @@ describe("handoff state inspection", () => {
     ["a parked step", { steps: [{ calls: [], origin: {}, response: [] }] }],
     ["a limit prompt", { prompt: { origin: {}, request: {} } }],
     ["queued input", { queued: { message: "Alice's follow-up" } }],
-  ])("refuses a session machine holding %s", (_name, work) => {
-    const machine = { grants: [], sequence: 1, started: true, steps: [], version: 1, ...work };
-    expect(isSessionStateIdleForHandoff(checkpoint({ "eve.session": machine }))).toBe(false);
+  ])("refuses a turn state holding %s", (_name, work) => {
+    const turnState = { grants: [], sequence: 1, started: true, steps: [], version: 1, ...work };
+    expect(isSessionStateIdleForHandoff(checkpoint({ "eve.session": turnState }))).toBe(false);
   });
   it.each([
     ["eve.runtime.pendingAuthorization", false],

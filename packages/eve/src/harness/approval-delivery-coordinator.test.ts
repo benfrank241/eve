@@ -13,10 +13,10 @@ import type { SessionAuthContext } from "#channel/types.js";
 import { settleDirectApprovalResponse } from "#harness/approval-candidates.js";
 import { coordinateApprovalDelivery } from "#harness/approval-delivery-coordinator.js";
 import { currentRequester } from "#harness/parked-calls.js";
-import { openApprovalRequests, readSessionMachine } from "#harness/session-machine.js";
+import { openApprovalRequests, readTurnState } from "#harness/turn-state.js";
 import type { HarnessSession } from "#harness/types.js";
 import type { InputRequest } from "#shared/input.js";
-import { parkApprovalStep } from "#internal/testing/session-machine.js";
+import { parkApprovalStep } from "#internal/testing/turn-state.js";
 
 const request: InputRequest = {
   action: { callId: "call-1", input: { marker: "durable" }, kind: "tool-call", toolName: "gate" },
@@ -127,7 +127,7 @@ describe("coordinateApprovalDelivery", () => {
     );
     expect(rejected.stepInput?.inputResponses ?? []).toEqual([]);
     expect(getApprovalAuditState(rejected.session.state).settlements).toEqual([]);
-    expect(openApprovalRequests(readSessionMachine(rejected.session.state))).toHaveLength(1);
+    expect(openApprovalRequests(readTurnState(rejected.session.state))).toHaveLength(1);
 
     const requesterCancel = await coordinateApprovalDelivery({
       now: 102,
@@ -347,9 +347,7 @@ describe("coordinateApprovalDelivery", () => {
     expect(result.stepInput?.message).toBe("What else can you help with?");
     expect(result.stepInput?.messageAuth).toEqual(messageAuth);
     expect(
-      openApprovalRequests(readSessionMachine(result.session.state)).map(
-        (pending) => pending.requestId,
-      ),
+      openApprovalRequests(readTurnState(result.session.state)).map((pending) => pending.requestId),
     ).toEqual([request.requestId]);
   });
 });

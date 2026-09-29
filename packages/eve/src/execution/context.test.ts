@@ -15,7 +15,7 @@ import {
 import { ChannelKey } from "#runtime/sessions/runtime-context-keys.js";
 import { runStep } from "#context/run-step.js";
 import { deserializeContext, serializeContext } from "#context/serialize.js";
-import { atSessionTurn } from "#internal/testing/session-machine.js";
+import { atSessionTurn } from "#internal/testing/turn-state.js";
 import type { HarnessSession } from "#harness/types.js";
 
 vi.mock("./sandbox/ensure.js", () => ({

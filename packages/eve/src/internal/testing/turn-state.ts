@@ -7,10 +7,10 @@ import {
   eventCoordinates,
   openTurn,
   parkStep,
-  readSessionMachine,
-  writeSessionMachine,
+  readTurnState,
+  writeTurnState,
   type OpenTurn,
-} from "#harness/session-machine.js";
+} from "#harness/turn-state.js";
 import type { SessionStateMap } from "#harness/types.js";
 import type { InputRequest } from "#shared/input.js";
 
@@ -30,7 +30,7 @@ export function parkApprovalStep<T extends WithState>(
     readonly responsePolicy?: true;
   },
 ): T {
-  const opened = openTurn(readSessionMachine(session.state));
+  const opened = openTurn(readTurnState(session.state));
   const parked = parkStep(opened, {
     calls: input.requests.map((request) => ({
       approval: input.responsePolicy === true ? { request, responsePolicy: true } : { request },
@@ -43,7 +43,7 @@ export function parkApprovalStep<T extends WithState>(
     requester: input.requester,
     response: input.response,
   });
-  return writeSessionMachine(session, closeTurn(parked));
+  return writeTurnState(session, closeTurn(parked));
 }
 
 /** Places the session inside `turn`, or between turns when it is omitted. */
@@ -51,9 +51,9 @@ export function atSessionTurn<T extends WithState>(
   session: T,
   input: { readonly sequence: number; readonly started?: boolean; readonly turn?: OpenTurn },
 ): T {
-  const { turn: _turn, ...machine } = readSessionMachine(session.state);
-  const placed = { ...machine, sequence: input.sequence, started: input.started ?? true };
-  return writeSessionMachine(
+  const { turn: _turn, ...turnState } = readTurnState(session.state);
+  const placed = { ...turnState, sequence: input.sequence, started: input.started ?? true };
+  return writeTurnState(
     session,
     input.turn === undefined ? placed : { ...placed, turn: input.turn },
   );
@@ -71,7 +71,7 @@ export function parkWorkflowRuns<T extends WithState>(
     readonly run: { readonly runId: string; readonly hookToken: string };
   }[],
 ): T {
-  const opened = openTurn(readSessionMachine(session.state));
+  const opened = openTurn(readTurnState(session.state));
   const parked = parkStep(opened, {
     calls: calls.map((call) => ({
       callId: call.callId,
@@ -93,5 +93,5 @@ export function parkWorkflowRuns<T extends WithState>(
     origin: eventCoordinates(opened),
     response: [],
   });
-  return writeSessionMachine(session, advanceStep(parked));
+  return writeTurnState(session, advanceStep(parked));
 }

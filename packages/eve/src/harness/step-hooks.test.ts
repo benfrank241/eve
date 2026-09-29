@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { ConversationIdKey } from "#context/keys.js";
 import { buildStepHooks } from "#harness/step-hooks.js";
-import type { EventCoordinates } from "#harness/session-machine.js";
+import type { EventCoordinates } from "#harness/turn-state.js";
 import type { HarnessSession } from "#harness/types.js";
 
 const coordinates: EventCoordinates = {
