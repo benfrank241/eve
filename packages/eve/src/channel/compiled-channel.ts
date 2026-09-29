@@ -11,6 +11,7 @@ import type { RouteDefinition } from "#channel/routes.js";
 import type { Session } from "#channel/session.js";
 import type { SessionAuthContext, TurnPolicy } from "#channel/types.js";
 import type { JsonObject } from "#shared/json.js";
+import type { ScheduleChannelTarget } from "#public/schedules/collection.js";
 
 export const CHANNEL_SENTINEL = "eve:channel" as const;
 const CHANNEL_BUILD_METADATA = Symbol.for("eve.channel.buildMetadata");
@@ -50,6 +51,12 @@ export interface CompiledChannel<
   readonly adapter: ChannelAdapter<any>;
   readonly cors?: NormalizedChannelCorsOptions;
   readonly __metadata?: TMetadata;
+  readonly mintPersonalTarget?: (auth: SessionAuthContext) => Promise<ScheduleChannelTarget>;
+  readonly captureScheduleTarget?: (input: {
+    readonly mode?: import("#public/schedules/collection.js").ScheduleDeliveryMode;
+    readonly state: any;
+    readonly continuationToken?: string;
+  }) => ScheduleChannelTarget;
   readonly receive?: (
     input: {
       readonly message: string | UserContent;

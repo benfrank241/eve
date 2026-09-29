@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { UserContent } from "ai";
 
 import type { ChannelAdapter } from "#channel/adapter.js";
@@ -95,12 +96,22 @@ export function createChannelOperations<TState = undefined>(input: {
   readonly metadata?: ChannelDeliverySource;
   readonly runtime: Runtime;
   readonly turnPolicy?: TurnPolicy;
+  readonly requestInput?: boolean;
+  readonly occurrenceToken?: string;
 }): ChannelReceiveContext<TState> {
+  const occurrenceAddress =
+    input.occurrenceToken === undefined
+      ? undefined
+      : `scheduled-${createHash("sha256").update(input.occurrenceToken).digest("base64url")}`;
   const channelAddress = createChannelAddressFn<TState>(input);
+  const occurrenceChannelAddress =
+    occurrenceAddress === undefined ? undefined : channelAddress(occurrenceAddress);
 
   return {
     from(address) {
-      const bound = channelAddress(address);
+      // Occurrence identity is separate from the adapter's Slack destination.
+      // Each scheduled send creates a fresh session; retries recover that occurrence.
+      const bound = occurrenceChannelAddress ?? channelAddress(address);
       const source: InternalChannelSource<TState> = {
         async send(message, options) {
           return await bound.deliver(
@@ -144,7 +155,7 @@ export function createChannelOperations<TState = undefined>(input: {
       return source;
     },
     async resolveSession(address) {
-      return await channelAddress(address).resolveSession();
+      return await (occurrenceChannelAddress ?? channelAddress(address)).resolveSession();
     },
   };
 }

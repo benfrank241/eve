@@ -263,6 +263,14 @@ export interface Channel<
     input: ReceiveInput<TReceiveTarget>,
     ctx: ChannelReceiveContext<TState>,
   ) => Promise<Session>;
+  readonly mintPersonalTarget?: (
+    auth: import("#channel/types.js").SessionAuthContext,
+  ) => Promise<import("#public/schedules/collection.js").ScheduleChannelTarget>;
+  readonly captureScheduleTarget?: (input: {
+    readonly mode?: import("#public/schedules/collection.js").ScheduleDeliveryMode;
+    readonly state: Readonly<TState>;
+    readonly continuationToken?: string;
+  }) => import("#public/schedules/collection.js").ScheduleChannelTarget;
   readonly turnPolicy?: TurnPolicy;
 }
 
@@ -296,6 +304,8 @@ export function defineChannel<
     adapter,
     cors,
     receive: definition.receive,
+    mintPersonalTarget: definition.mintPersonalTarget,
+    captureScheduleTarget: definition.captureScheduleTarget,
     turnPolicy: definition.turnPolicy,
   };
 

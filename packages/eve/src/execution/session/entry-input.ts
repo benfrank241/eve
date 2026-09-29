@@ -13,6 +13,8 @@ export const SESSION_HANDOFF_VERSION = 2;
  */
 export interface InitialWorkflowEntryInput {
   readonly activityCollectorRunId?: string;
+  /** Retained independently of the inbox to deduplicate schedule occurrences. */
+  readonly occurrenceToken?: string;
   readonly continuationConflictCommand?: Extract<SessionCommand, { readonly kind: "send" }>;
   readonly input: RunInput["input"];
   readonly kind: "initial";
