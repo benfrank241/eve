@@ -16,7 +16,7 @@ import { authorizationKey } from "#client/session-utils.js";
 import { stripTerminalControls } from "#cli/ui/terminal-text.js";
 import { isTaskControlTool } from "#protocol/task-tools.js";
 import type { Block } from "./blocks.js";
-import type { AgentTUIConversationView, AgentTUIFailure, ToolLabels } from "./conversation-view.js";
+import type { AgentTUIConversationView, AgentTUIFailure } from "./conversation-view.js";
 import { FileContentCache } from "./file-content-cache.js";
 import { waitingLabel, type TaskEntry } from "./task-activity.js";
 import { isTerminalToolCallPart } from "./terminal-tool-part.js";
@@ -36,6 +36,7 @@ import {
   firstLine,
   formatAuthorization,
   isActive,
+  isRetryRefusal,
   isToolCallRow,
   labelContext,
   subagentSteps,
@@ -154,8 +155,6 @@ export class ConversationTranscript {
     this.#aliasConfirmedMessages(conversation.messages);
     const childToolIds = followedAgentToolCallIds(conversation);
     const taskCalls = taskCallsById(conversation);
-    const withdrawn = new Set(view.data.withdrawnCallIds);
-    const labels = view.data.toolLabels;
 
     for (const message of conversation.messages) {
       if (message.role === "user") {
@@ -169,7 +168,7 @@ export class ConversationTranscript {
           // A call still streaming its input shows a placeholder only while the turn runs.
           (part.state !== "input-streaming" || working) &&
           !isTaskControlTool(part.toolName) &&
-          !withdrawn.has(part.toolCallId) &&
+          !isRetryRefusal(part) &&
           part.toolMetadata?.eve?.inputRequest?.kind !== "session-limit" &&
           !taskCalls.has(part.toolCallId) &&
           !childToolIds.has(part.toolCallId) &&
@@ -192,16 +191,13 @@ export class ConversationTranscript {
         } else if (part.type === "dynamic-tool") {
           const taskCall = taskCalls.get(part.toolCallId);
           if (taskCall !== undefined) {
-            const start = this.#taskStartLine(part, taskCall.task, labels, options, now);
+            const start = this.#taskStartLine(part, taskCall.task, options, now);
             if (start !== undefined) blocks.push(start);
             continue;
           }
           const state = states.get(part);
           if (state === undefined || options.tools === "hidden") continue;
-          const toolLabels = labels[part.toolCallId];
-          blocks.push(
-            this.#toolBlock(part, state, activeSteps.has(part.stepIndex), toolLabels, options),
-          );
+          blocks.push(this.#toolBlock(part, state, activeSteps.has(part.stepIndex), options));
         }
       }
       const turnId = message.metadata?.turnId;
@@ -251,7 +247,6 @@ export class ConversationTranscript {
   #taskStartLine(
     part: EveDynamicToolPart,
     task: ConversationTask,
-    labels: Readonly<Record<string, ToolLabels>>,
     options: TranscriptOptions,
     now: number,
   ): Block | undefined {
@@ -259,7 +254,7 @@ export class ConversationTranscript {
       task.kind === "agent" ? options.subagents !== "hidden" : options.tools !== "hidden";
     if (!visible) return undefined;
     const callId = part.toolCallId;
-    const label = labels[callId]?.start;
+    const label = part.toolMetadata?.eve?.label?.start;
     let record = this.#tasks.get(callId);
     let summary = agentTaskSummary(part.input);
     let baseName = agentDisplayName(stripTerminalControls(part.toolName));
@@ -402,7 +397,9 @@ export class ConversationTranscript {
     for (const message of messages) {
       for (const part of message.parts) {
         order += 1;
-        if (!isToolCallRow(part) || isTaskControlTool(part.toolName)) continue;
+        if (!isToolCallRow(part) || isTaskControlTool(part.toolName) || isRetryRefusal(part)) {
+          continue;
+        }
         const childTask = childTasks.get(part.toolCallId);
         const state = toolState(child, part, {
           turnId: message.metadata?.turnId,
@@ -412,6 +409,8 @@ export class ConversationTranscript {
         const block = this.#memoize(id, [part, state.status, record.name], () => {
           const context = this.#presentationContext(part.toolCallId, part, state, options, {
             isSubagent: childTask?.task.kind === "agent",
+            label: part.toolMetadata?.eve?.label?.start,
+            completeLabel: part.toolMetadata?.eve?.label?.complete,
           });
           return {
             ...toolBlock(part, state, context),
@@ -537,17 +536,16 @@ export class ConversationTranscript {
     part: EveDynamicToolPart,
     state: ToolState,
     cohortActive: boolean,
-    labels: ToolLabels | undefined,
     options: TranscriptOptions,
   ): Block {
     const live = cohortActive || isActive(state.status);
     return this.#memoize(
       `tool:${part.toolCallId}`,
-      [part, state.status, live, options.tools, options.subagentNames, labels],
+      [part, state.status, live, options.tools, options.subagentNames],
       () => {
         const context = this.#presentationContext(part.toolCallId, part, state, options, {
-          label: labels?.start,
-          completeLabel: labels?.complete,
+          label: part.toolMetadata?.eve?.label?.start,
+          completeLabel: part.toolMetadata?.eve?.label?.complete,
         });
         return {
           ...toolBlock(part, state, context),
